@@ -81,6 +81,10 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
 .empty{text-align:center;padding:3rem 1rem;color:#888;font-size:14px}
 .filter-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:1rem;align-items:center}
 .filter-row select{width:auto;font-size:14px;padding:6px 10px}
+.log-search-row{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+.log-search-row input{flex:1;min-width:0;padding:7px 11px;font-size:14px;border:1px solid #ddd;border-radius:8px;font-family:inherit;color:#1a1a1a;background:#fff}
+.log-search-row input:focus{outline:none;border-color:#1a1a1a}
+.log-search-row .reset-btn{white-space:nowrap;flex-shrink:0;padding:7px 12px}
 .sort-buttons{display:flex;gap:6px;flex-wrap:nowrap;width:100%;margin-top:4px}
 .sort-buttons button{flex:1;white-space:nowrap}
 .del-btn{background:none;border:none;cursor:pointer;color:#bbb;font-size:17px;padding:2px 4px}
@@ -390,6 +394,10 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
 
 <!-- LOG TAB -->
 <div id="tab-log" class="section">
+  <div class="log-search-row">
+    <input type="search" id="log-search" placeholder="🔍 Search expenses…" autocomplete="off" oninput="onLogSearch()">
+    <button class="btn-ghost reset-btn" onclick="resetFilters()" title="Clear search and all filters">Reset filters</button>
+  </div>
   <div class="filter-row">
     <select id="fil-instance" onchange="renderLog()">
       <option value="">All instances</option>
@@ -590,7 +598,11 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
           <tr><td><code>/claude</code></td><td>Claude Pro 🤖</td><td>$20.00</td><td>20th</td></tr>
         </table>
         <p><strong>Savings shortcuts:</strong> <code>/dsc</code> → 🟠 Discover Cashback, <code>/chs</code> → 🔷 Chase Ultimate Reward, <code>/ven</code> → ✌🏻 Venmo Balance.</p>
-        <p><strong>Delta calculation in Savings Details:</strong> type <code>$X.XX /delta</code> followed by a space. It replaces with <code>$X.XX Δ $Y.YY</code> where Y.YY is X.XX minus the amount paid (or full price if paid is 0/empty). Useful for tracking remaining gift card / store credit balance after an expense.</p>
+        <p><strong>Delta calculation in Savings Details</strong> — both directions trigger on a trailing space:</p>
+        <ul>
+          <li><strong>Forward</strong> <code>$X.XX /delta</code> + space → <code>$X.XX Δ $Y.YY</code>, where Y.YY = X.XX minus the amount paid (or full price if paid is 0/empty). Reads as "balance went from X to Y." Useful for the remaining gift card / store credit balance after an expense.</li>
+          <li><strong>Backward</strong> <code>/delta $Y.YY</code> + space → <code>$X.XX /delta $Y.YY</code>, where X.XX = Y.YY plus the <em>amount paid</em> (fallback: full price). True inverse of forward: since forward subtracts paid to find the remaining balance, backward adds paid back to recover the original. Only fires when amount paid (or full price) is set.</li>
+        </ul>
         <p><strong>Keyword autofill:</strong> typing certain keywords anywhere in the description sets Instance + Category. "gasoline" → Expense + Vehicle. "sonic fiber" → Subscription + Utilities. "fastrak" → Expense + Vehicle.</p>
       </div>
     </div>
@@ -643,6 +655,15 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
       </div>
     </div>
 
+    <div class="ref-section" data-keywords="expense log search filter reset instance category status drill down query find narrow sort">
+      <div class="ref-head" onclick="toggleRefSection(this)"><span>Expense log — search &amp; filters</span><span class="chev">▶</span></div>
+      <div class="ref-body">
+        <p><strong>Search box:</strong> a global query across each entry's description, location, category, instance and status labels, savings type/details, recipient note, split details, and amounts. Multiple words are AND-matched (all must appear).</p>
+        <p><strong>Filters take priority:</strong> the Instance / Category / Status dropdowns decide what's on screen first; the search box only drills down within that subset. So filtering to "Food" and then searching narrows to Food entries that also match the query — search never widens past the filters.</p>
+        <p><strong>Reset filters</strong> clears the search box and all three dropdowns at once. It leaves the sort mode alone, since sort is a view preference rather than a filter.</p>
+      </div>
+    </div>
+
     <div class="ref-section" data-keywords="summary stat total spent saved full price bounties pending expenses savings pie chart by instance category status executed across months entire log">
       <div class="ref-head" onclick="toggleRefSection(this)"><span>Summary tab</span><span class="chev">▶</span></div>
       <div class="ref-body">
@@ -692,11 +713,10 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 // ── Authentication gate ───────────────────────────────────────────────────────
-// Security now lives in Supabase: you sign in with a real email + password,
-// Supabase issues a signed session token, and the database RLS policy only
-// returns data to requests carrying that token. The anon key alone can't read
-// anything. The session is stored by the Supabase client and auto-refreshes,
-// so you stay logged in across launches until you sign out.
+// Auth is handled by Supabase (email + password → signed session token).
+// The anon key is safe to ship here; data is protected by RLS + login, not by hiding this key.
+// Sessions are stored in localStorage and auto-refreshed. A 72-hour local timestamp allows
+// the gate to be skipped on iOS PWA launches where the Supabase token gets purged.
 
 async function gateSubmit() {
   const emailEl = document.getElementById('gate-email');
@@ -714,24 +734,36 @@ async function gateSubmit() {
     return;
   }
   document.getElementById('gate').style.display = 'none';
+  try { localStorage.setItem(AUTH_TS_KEY, Date.now()); } catch(e) {}
   input.value = '';
   err.textContent = '';
   loadData();
 }
 
 async function gateCheck() {
-  // Returns true if a valid session already exists (skip the gate)
+  // Returns true if a valid Supabase session exists, or if the user logged in within 72 hours.
+  // The 72-hour fallback handles iOS PWA storage purges: if iOS clears the Supabase token
+  // from localStorage, we skip the gate and use the locally cached data instead.
   const { data } = await sbClient.auth.getSession();
   if (data && data.session) {
     document.getElementById('gate').style.display = 'none';
+    try { localStorage.setItem(AUTH_TS_KEY, Date.now()); } catch(e) {}
     return true;
   }
+  try {
+    const lastAuth = parseInt(localStorage.getItem(AUTH_TS_KEY) || '0', 10);
+    if (lastAuth && (Date.now() - lastAuth) < AUTH_TTL_MS) {
+      document.getElementById('gate').style.display = 'none';
+      return true; // Skip gate; data loads from localStorage cache via sbLoad fallback
+    }
+  } catch(e) {}
   document.getElementById('gate-email').focus();
   return false;
 }
 
 async function gateLogout() {
   await sbClient.auth.signOut();
+  try { localStorage.removeItem(AUTH_TS_KEY); } catch(e) {}
   location.reload();
 }
 // ─────────────────────────────────────────────────────────────────────────────
@@ -747,18 +779,17 @@ const STATUS_PIE_COLORS={executed:'#4285F4',inprogress:'#FBBC04',greenlit:'#34A8
 const PLANNING_INSTANCES=['planned','bounty','bigbounty','megabounty'];
 const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const STORAGE_KEY='expenses_v9';
+const AUTH_TTL_MS=72*60*60*1000; // 72 hours
+const AUTH_TS_KEY='auth_last_ok';
 
 // ── Supabase sync ─────────────────────────────────────────────────────────────
-// The publishable key is safe to ship in client-side code (Supabase designates it
-// "safe to share publicly"). Your data is protected by Row Level Security + the
-// email/password login, not by hiding this key. Never put a sb_secret_ key here.
+// The publishable anon key is safe in client-side code; data is protected by RLS + login.
+// Never put a sb_secret_ key here.
 const SUPABASE_URL = 'https://amikolfmslpcvghqgxes.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_eowP0ZskublVcNIFi_v4-g_TlxKDbQQ';
 const SB_ROW_ID = 1;
 
 // The client persists the session in localStorage and auto-refreshes the token.
-// Once signed in, every .from() call below carries that token automatically,
-// which is what satisfies the "authenticated only" RLS policy.
 const sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 async function sbLoad() {
@@ -767,8 +798,13 @@ async function sbLoad() {
       .from('expenses')
       .select('data')
       .eq('id', SB_ROW_ID);
-    if (error) return null;            // request failed (or not authorized) → caller uses cache
-    return (data && data.length > 0) ? data[0].data : [];  // [] = connected but empty
+    if (error) return null;            // failed/not authorized → caller uses cache
+    if (!data || !data.length) return { entries: [], locations: [] };
+    const raw = data[0].data;
+    // Support both old format (bare array) and new wrapped format ({entries, locations}).
+    // Old format is migrated transparently on the next saveData() call.
+    if (Array.isArray(raw)) return { entries: raw, locations: [] };
+    return { entries: Array.isArray(raw.entries) ? raw.entries : [], locations: Array.isArray(raw.locations) ? raw.locations : [] };
   } catch(e) { return null; }
 }
 
@@ -776,7 +812,7 @@ async function sbSave(expensesArr) {
   try {
     await sbClient
       .from('expenses')
-      .upsert({ id: SB_ROW_ID, data: expensesArr });
+      .upsert({ id: SB_ROW_ID, data: { entries: expensesArr, locations: knownLocations } });
   } catch(e) {}
 }
 // ─────────────────────────────────────────────────────────────────────────────
@@ -806,6 +842,8 @@ let manualOrder=[];
 let collapsedWeeks={};  // week key → true if collapsed
 let collapsedMonths={}; // month key → true if collapsed
 let collapsedTiers={};  // tier key → true if collapsed (plan-date mode)
+let logSearch='';       // current global search query for the Expense log (lowercased)
+let knownLocations=[];  // append-only list of every location ever saved; persists across month clears
 
 function toggleTier(key){
   collapsedTiers[key]=!collapsedTiers[key];
@@ -1250,28 +1288,53 @@ function onSavingsDetailsInput(){
     }
   });
 
-  // /delta calculation: pattern is "$X.XX /delta " (with trailing space as trigger).
-  // Replace with "$X.XX Δ $Y.YY " where Y.YY = X.XX - (amount paid OR full price if paid is 0/empty).
-  // Subtractor falls back to full price when amount paid is empty or zero.
-  // The trailing space is preserved so the user can keep typing after.
-  const deltaRe=/\$(\d+(?:\.\d+)?)\s+\/delta\s/g;
-  if(deltaRe.test(v)){
-    const paidStr=document.getElementById('f-paid').value;
-    const fullStr=document.getElementById('f-full').value;
-    const paidVal=parseFloat(paidStr);
-    const fullVal=parseFloat(fullStr);
+  // /delta — two directions, each triggered by a trailing space after the pattern.
+  // The space is preserved so the user can keep typing afterward.
+  //
+  //   FORWARD   "$X /delta "  →  "$X Δ $Y "        Y = X − (amount paid, or full price if paid is 0/empty)
+  //                                                 "I had X on the card, spent it down, Y remains."
+  //   BACKWARD  "/delta $Y "  →  "$X /delta $Y "   X = Y + amount paid (fallback: full price)
+  //                                                 True inverse of forward: paid came off the balance,
+  //                                                 so add it back to recover the original X.
+  //
+  // The two are distinguishable by where the amount sits relative to /delta, and by the
+  // marker they leave behind (forward collapses to Δ; backward keeps /delta literally).
+  const paidVal=parseFloat(document.getElementById('f-paid').value);
+  const fullVal=parseFloat(document.getElementById('f-full').value);
+
+  // BACKWARD first: amount appears AFTER /delta. Addend mirrors forward's subtractor (paid, fallback full).
+  {
+    let addend=null;
+    if(!isNaN(paidVal)&&paidVal>0)addend=paidVal;
+    else if(!isNaN(fullVal)&&fullVal>0)addend=fullVal;
+    if(addend!==null&&/\/delta\s+\$(\d+(?:\.\d+)?)\s/.test(v)){
+      const before=v;
+      v=v.replace(/\/delta\s+\$(\d+(?:\.\d+)?)\s/g,(match,amtStr,offset,whole)=>{
+        if(/\$\d+(?:\.\d+)?\s$/.test(whole.slice(0,offset)))return match;
+        const end=parseFloat(amtStr);
+        const start=Math.round((end+addend)*100)/100;
+        return`$${start.toFixed(2)} /delta $${end.toFixed(2)} `;
+      });
+      if(v!==before)replaced=true;
+    }
+  }
+
+  // FORWARD: amount appears BEFORE /delta. The (?!\$) lookahead keeps it from re-firing
+  // on a backward result like "$X /delta $Y " (where /delta is followed by an amount).
+  if(/\$(\d+(?:\.\d+)?)\s+\/delta\s(?!\$)/.test(v)){
     let subtractor=null;
     if(!isNaN(paidVal)&&paidVal>0)subtractor=paidVal;
     else if(!isNaN(fullVal)&&fullVal>0)subtractor=fullVal;
     if(subtractor!==null){
-      v=v.replace(/\$(\d+(?:\.\d+)?)\s+\/delta\s/g,(match,amtStr)=>{
+      const before=v;
+      v=v.replace(/\$(\d+(?:\.\d+)?)\s+\/delta\s(?!\$)/g,(match,amtStr)=>{
         const amt=parseFloat(amtStr);
         const diff=Math.round((amt-subtractor)*100)/100;
         // Format with leading minus before $ if negative
         const formatted=diff<0?`-$${Math.abs(diff).toFixed(2)}`:`$${diff.toFixed(2)}`;
         return`$${amt.toFixed(2)} Δ ${formatted} `;
       });
-      replaced=true;
+      if(v!==before)replaced=true;
     }
   }
 
@@ -1349,30 +1412,38 @@ function showToast(msg){const t=document.getElementById('toast');t.textContent=m
 function updateLocationSuggestions(){
   const dl=document.getElementById('location-suggestions');
   if(!dl)return;
-  // Collect unique, non-empty locations from existing expenses
-  const seen=new Set();
-  const suggestions=[];
+  // Base list is the persistent knownLocations (survives month clears).
+  // Union in any current expense locations not yet in the list (e.g. before first saveData).
+  const seen=new Set(knownLocations);
+  const extra=[];
   expenses.forEach(e=>{
-    if(e.location&&!seen.has(e.location)){
-      seen.add(e.location);
-      suggestions.push(e.location);
-    }
+    if(e.location&&!seen.has(e.location)){seen.add(e.location);extra.push(e.location);}
   });
-  dl.innerHTML=suggestions.sort().map(loc=>`<option value="${loc.replace(/"/g,'&quot;')}"></option>`).join('');
+  const suggestions=[...knownLocations,...extra].sort();
+  dl.innerHTML=suggestions.map(loc=>`<option value="${loc.replace(/"/g,'&quot;')}"></option>`).join('');
 }
 
 async function loadData(){
   const logEl = document.getElementById('log');
   if(logEl) logEl.innerHTML = '<div style="text-align:center;padding:2rem;color:#888">Loading…</div>';
 
-  // Try Supabase first; null means connection failed, [] means connected but empty
+  // Try Supabase first; null means connection failed, object means connected (possibly empty).
+  // sbLoad() now always returns {entries, locations} or null.
   const remote = await sbLoad();
   if(remote !== null) {
-    expenses = Array.isArray(remote) ? remote : [];
-    try{localStorage.setItem(STORAGE_KEY, JSON.stringify(expenses));}catch(e){}
+    expenses = remote.entries || [];
+    knownLocations = remote.locations || [];
+    try{localStorage.setItem(STORAGE_KEY, JSON.stringify({ entries: expenses, locations: knownLocations }));}catch(e){}
   } else {
-    // Offline — fall back to local cache
-    try{const d=localStorage.getItem(STORAGE_KEY);expenses=d?JSON.parse(d):[];}catch(e){expenses=[];}
+    // Offline — fall back to local cache. Support both old bare-array and new wrapped format.
+    try{
+      const d=localStorage.getItem(STORAGE_KEY);
+      if(d){
+        const parsed=JSON.parse(d);
+        if(Array.isArray(parsed)){expenses=parsed;knownLocations=[];}
+        else{expenses=parsed.entries||[];knownLocations=parsed.locations||[];}
+      }else{expenses=[];knownLocations=[];}
+    }catch(e){expenses=[];knownLocations=[];}
     showToast('Offline — using locally cached data.');
   }
   // Migrate old category names to current names
@@ -1407,8 +1478,13 @@ async function loadData(){
 }
 async function saveData(){
   expenses=renumberIndulgences(expenses);
+  // Accumulate any new locations from current expenses into the persistent knownLocations list.
+  // This is append-only — clearing entries never removes from this list.
+  const seen=new Set(knownLocations);
+  expenses.forEach(e=>{if(e.location&&!seen.has(e.location)){seen.add(e.location);knownLocations.push(e.location);}});
+  knownLocations.sort();
   await sbSave(expenses);
-  try{localStorage.setItem(STORAGE_KEY,JSON.stringify(expenses));}catch(e){}
+  try{localStorage.setItem(STORAGE_KEY,JSON.stringify({entries:expenses,locations:knownLocations}));}catch(e){}
   updateLocationSuggestions();
 }
 
@@ -1988,10 +2064,7 @@ function updateSplitLabel(){
   document.getElementById('split-amount-label').textContent=dir&&dir.value==='received'?'Amount received ($)':'Your share ($)';
 }
 function calcSavings(){const f=parseFloat(document.getElementById('f-full').value)||0,p=parseFloat(document.getElementById('f-paid').value)||0;document.getElementById('f-saved').value=f-p>=0?(f-p).toFixed(2):'';}
-document.getElementById('f-full').addEventListener('input',calcSavings);
-document.getElementById('f-date').addEventListener('change',updateIndulgenceOptions);
 function fmtField(el){const v=el.value;if(v===''||v===null)return;const n=parseFloat(v);if(!isNaN(n))el.value=n.toFixed(2);}
-document.getElementById('f-full').addEventListener('blur',function(){fmtField(this);});
 
 function readForm(existingId){
   const desc=document.getElementById('f-desc').value.trim();
@@ -2263,6 +2336,45 @@ function sortWeekEntries(entries){
   });
 }
 
+function onLogSearch(){
+  const el=document.getElementById('log-search');
+  logSearch=(el?el.value:'').trim().toLowerCase();
+  renderLog();
+}
+// Reset clears the global search AND the three dropdown filters (instance/category/status).
+// Sort mode is intentionally left alone — it's a view preference, not a filter.
+function resetFilters(){
+  document.getElementById('fil-instance').value='';
+  document.getElementById('fil-category').value='';
+  document.getElementById('fil-status').value='';
+  const s=document.getElementById('log-search');if(s)s.value='';
+  logSearch='';
+  renderLog();
+}
+// Search is secondary to the dropdown filters: it only narrows within whatever the
+// filters already surfaced (see renderLog — filters short-circuit before this runs).
+// Multi-word queries are AND-matched against a haystack of the entry's text fields.
+function entryMatchesSearch(e){
+  if(!logSearch)return true;
+  const parts=[];
+  if(e.desc)parts.push(e.desc);
+  if(e.location)parts.push(e.location);
+  if(e.category)parts.push(e.category);
+  parts.push(INSTANCE_LABELS[e.instance]||e.instance||'');
+  if(e.indulgenceTag)parts.push(INSTANCE_LABELS[e.indulgenceTag]||e.indulgenceTag);
+  if(e.status)parts.push(STATUS_LABELS[e.status]||e.status);
+  if(e.savingstype)parts.push(e.savingstype);
+  if(e.savingsdetails)parts.push(e.savingsdetails);
+  if(e.recipientNote)parts.push(e.recipientNote);
+  if(e.split){if(e.split.with)parts.push(e.split.with);if(e.split.via)parts.push(e.split.via);}
+  if(e.full!=null)parts.push(String(e.full));
+  if(e.paid!=null)parts.push(String(e.paid));
+  if(e.saved!=null)parts.push(String(e.saved));
+  if(isDealRedemption(e))parts.push('deal redemption');
+  const hay=parts.join(' \u0001 ').toLowerCase();
+  return logSearch.split(/\s+/).every(tok=>hay.includes(tok));
+}
+
 function renderLog(){
   const fi=document.getElementById('fil-instance').value,fc=document.getElementById('fil-category').value,fs=document.getElementById('fil-status').value;
   const filtered=expenses.filter(e=>{
@@ -2279,10 +2391,15 @@ function renderLog(){
     }
     if(fc&&e.category!==fc)return false;
     if(fs&&e.status!==fs)return false;
+    if(!entryMatchesSearch(e))return false;
     return true;
   });
   const el=document.getElementById('expense-list');
-  if(!filtered.length){el.innerHTML='<div class="empty">No expenses found. Add your first one!</div>';return;}
+  if(!filtered.length){
+    const narrowed=logSearch||fi||fc||fs;
+    el.innerHTML=`<div class="empty">${narrowed?'No matching expenses. Try adjusting your search or filters.':'No expenses found. Add your first one!'}</div>`;
+    return;
+  }
 
   if(sortMode==='planned'){
     // Tier-based collapsible view
@@ -2560,73 +2677,6 @@ function onHandleTap(id,ev){
 }
 
 
-function renderCategoryPie(byCategory,total){
-  const canvas=document.getElementById('category-pie');
-  const legend=document.getElementById('category-legend');
-  const ctx=canvas.getContext('2d');
-  const dpr=window.devicePixelRatio||1;
-  const CSS=260;
-  canvas.width=CSS*dpr;canvas.height=CSS*dpr;
-  canvas.style.width=CSS+'px';canvas.style.height=CSS+'px';
-  ctx.scale(dpr,dpr);
-  const W=CSS,H=CSS;
-  const cx=W/2,cy=H/2,r=Math.min(W,H)/2-18,innerR=r*0.52;
-  ctx.clearRect(0,0,W,H);
-
-  const entries=Object.entries(byCategory).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
-  if(!entries.length){
-    ctx.fillStyle='#ccc';
-    ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fill();
-    legend.innerHTML='';return;
-  }
-
-  // Draw all outer slices first (no inner cutout inside the loop)
-  let startAngle=-Math.PI/2;
-  const GAP=0.018;
-  entries.forEach(([cat,val])=>{
-    const sliceAngle=(val/total)*Math.PI*2;
-    const hex=(CAT_META[cat]&&CAT_META[cat].hex)||'#ccc';
-    // For tiny slices smaller than the GAP, applying the gap would invert start/end angles
-    // and cause canvas to draw the entire circle the long way around. Use no gap in that case.
-    const useGap=sliceAngle>GAP*2;
-    const arcStart=useGap?startAngle+GAP/2:startAngle;
-    const arcEnd=useGap?startAngle+sliceAngle-GAP/2:startAngle+sliceAngle;
-    ctx.beginPath();
-    ctx.moveTo(cx,cy);
-    ctx.arc(cx,cy,r,arcStart,arcEnd);
-    ctx.lineTo(cx,cy);
-    ctx.closePath();
-    ctx.fillStyle=hex;
-    ctx.fill();
-    startAngle+=sliceAngle;
-  });
-
-  // Draw inner cutout ONCE, after all slices, to create the donut hole
-  ctx.beginPath();
-  ctx.arc(cx,cy,innerR,0,Math.PI*2);
-  ctx.fillStyle='#f9f9f7';
-  ctx.fill();
-
-  // Center label
-  ctx.textAlign='center';
-  ctx.textBaseline='middle';
-  ctx.fillStyle='#1a1a1a';
-  ctx.font='bold 17px system-ui,sans-serif';
-  ctx.fillText(fmt(total),cx,cy-9);
-  ctx.font='11px system-ui,sans-serif';
-  ctx.fillStyle='#888';
-  ctx.fillText('total spent',cx,cy+10);
-
-  // Legend
-  legend.innerHTML=entries.map(([cat,val])=>{
-    const hex=(CAT_META[cat]&&CAT_META[cat].hex)||'#ccc';
-    const pct=Math.round(val/total*100);
-    return`<div style="display:flex;align-items:center;gap:5px;font-size:12px;color:#555">
-      <span style="width:10px;height:10px;border-radius:50%;background:${hex};flex-shrink:0;display:inline-block"></span>
-      <span>${cat} <span style="color:#999">${pct}%</span></span>
-    </div>`;
-  }).join('');
-}
 
 function drawDonut(canvasId,legendId,slices,centerMain,centerSub){
   const canvas=document.getElementById(canvasId);
@@ -2743,7 +2793,9 @@ function renderSummary(){
 
   // By category — realized spend only, consistent with Total spent in the center.
   const byCategory={};counted.forEach(e=>{byCategory[e.category]=(byCategory[e.category]||0)+(e.paid||0);});
-  renderCategoryPie(byCategory,total);
+  drawDonut('category-pie','category-legend',
+    Object.entries(byCategory).map(([cat,val])=>({label:cat,value:val,color:(CAT_META[cat]&&CAT_META[cat].hex)||'#ccc'})),
+    fmt(total),'total spent');
   document.getElementById('category-breakdown').innerHTML=renderBreakdown(byCategory,total,null,null,false,'category');
 
   // By status — every planned/bounty entry, so the distribution shows executed vs. pending.
@@ -2845,8 +2897,7 @@ document.getElementById('f-date').addEventListener('change',function(){
 updateDateDisplay();
 document.getElementById('f-datelogged').value=today;
 loadSummarySectionStates();
-// gateCheck() is async (it asks Supabase whether a session exists).
-// loadData() runs here if already signed in, otherwise gateSubmit() calls it after sign-in.
+// Skip gate if already authenticated or within 72h; otherwise wait for gateSubmit().
 gateCheck().then(ok => { if (ok) loadData(); });
 </script>
 </body>

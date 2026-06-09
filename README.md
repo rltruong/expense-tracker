@@ -15,6 +15,7 @@ The entire app is one `index.html` file — vanilla HTML/CSS/JavaScript with no 
 - **Sticker placement logic** — built-in rules for placing physical bounty and indulgence stickers in the planner.
 - **Drag-and-drop ordering**, collapsible month/week grouping, and dual sort modes (by date logged vs. by planned date).
 - **Summary dashboards** — breakdowns by instance, category, and status, with bar and pie charts.
+- **Searchable log** — a global search box on top of the instance/category/status filters, with a one-tap **Reset filters**. Filters decide what's shown; search only drills down within them.
 - **Slash commands & autofill** — type `/gas`, `/claude`, `/icloud`, etc. to prefill recurring entries.
 - **Cross-device sync** via Supabase with email/password auth and row-level security; falls back to `localStorage` when offline.
 
@@ -138,6 +139,17 @@ Type one of these in the Description field to prefill an entry (auxiliary fields
 
 Typing certain keywords (e.g. "gasoline", "sonic fiber", "fastrak") auto-suggests the matching instance and category.
 
+### Savings-field shortcuts
+
+In the **Savings details** field:
+
+- `/dsc`, `/chs`, `/ven` expand to labeled icons (Discover Cashback, Chase Ultimate Reward, Venmo Balance).
+- `/delta` does balance arithmetic in two directions, each triggered by a trailing space:
+  - **Forward** — `$X.XX /delta ` → `$X.XX Δ $Y.YY `, where `Y.YY = X.XX − (amount paid, or full price if paid is 0/empty)`. Reads as "balance went from X to Y" (e.g. remaining gift-card balance after a purchase).
+  - **Backward** — `/delta $Y.YY ` → `$X.XX /delta $Y.YY `, where `X.XX = Y.YY + amount paid` (fallback: full price). True inverse of forward — since forward subtracts paid to find the remaining balance, backward adds paid back to recover the original. Only fires when amount paid (or full price) is set.
+
+  Note the two use different operands by design — forward subtracts *amount paid*, backward adds *you saved* — so they are true inverses only when the credit/stored value applied equals the savings (i.e. you pay the remainder out of pocket).
+
 ---
 
 ## Setup
@@ -197,6 +209,23 @@ Open `index.html` in a browser (or serve it from any static host). Sign in with 
 - Every save writes to Supabase and mirrors to `localStorage`.
 - Per-device UI state (collapsed sections, sort mode, manual drag order) is stored locally and not synced.
 
+## Archiving & clearing
+
+The two "Clear…" buttons in the Expense log **delete** entries (from Supabase and the cache) — there is no built-in trash or undo. Before clearing, use **Summary → Data → Export** to save a JSON snapshot; that file is your archive. **Import** later merges entries back in, keeping any existing entry with the same `id` as-is, so re-importing an archive is safe and non-destructive.
+
+Caveats to be aware of with the current model:
+
+- Export/import only moves the *expense objects*. Anything derived from them disappears when those entries are cleared and only returns if you re-import.
+- Import is keyed on `id` (a creation-time `Date.now()`), so it dedupes but never updates; an edited entry won't overwrite an older copy on import.
+
+A low-friction monthly workflow: export at month end → clear the month → keep the dated JSON files as your archive, re-importing only when you need an old entry back.
+
+### Location / URL memory
+
+Location suggestions are backed by a **persistent `knownLocations` list** that is accumulated on every save and survives month clears independently of the expense entries. Even after wiping all entries, the datalist in the Location field still shows every vendor/URL you've ever typed. New locations are appended on save; the list is sorted alphabetically.
+
+**Data shape note:** the Supabase row now stores `{ entries: [...], locations: [...] }` instead of a bare array. The code auto-migrates old bare-array data on first load. If you ever need to revert to code that predates this change, update `sbLoad` to handle the new shape (or export/reimport via the Data panel first).
+
 ---
 
 ## Project history
@@ -207,7 +236,8 @@ This tracker was built iteratively across several sessions. Notable milestones:
 - Grew the entry taxonomy to include planned expenses, indulgence slots, and three bounty tiers with price floors.
 - Added the Hobonichi Weeks journaling layer: transcription checkboxes, ⏳/☑️ day hints, monthly roll-forward for open bounties, and the physical sticker-placement workflow.
 - Added drag-and-drop ordering, dual sort modes, collapsible month/week grouping, and summary charts.
-- **Latest change:** non-planning expense cards now show a **`Transcribe to Memo`** label beside the transcription checkbox (previously a bare, unlabeled checkbox). Planned expenses and bounties are unchanged — they keep the ⏳/☑️ day-of-week + day-number hints.
+- Added the `Transcribe to Memo` label beside the transcription checkbox on non-planning expense cards.
+- **Latest change:** the Expense log gained a **global search box** (matches description, location, category, instance/status labels, savings, recipient, split, and amounts) layered under the existing filters, plus a **Reset filters** button. The `/delta` shortcut in Savings details gained a **backward direction** (`/delta $Y` → `$X /delta $Y`, symmetric inverse: `X = Y + paid`). Location/URL suggestions are now backed by a **persistent `knownLocations` list** that survives month clears; the Supabase row format changed from a bare array to `{entries, locations}` with auto-migration.
 
 ---
 
