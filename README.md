@@ -91,6 +91,10 @@ This is the part that makes the app unusual. It's designed to pair a digital led
 
 Planned expenses and bounties move through statuses: **In progress → Greenlit → Executed** (or **Canceled**). When an entry is marked Executed, you record the `actualDate` it actually happened.
 
+### Returning to a planned entry
+
+When you're adding an entry with a planning instance (Planned, Bounty, Big/Mega Bounty) and the description exactly matches an existing **pending** planning entry, a small picker appears under the Description field listing the match(es). Click a row to load that entry into the form and continue it (e.g. to mark it Executed). Nothing loads automatically — the form is only overwritten when you click a row, so typing a description that happens to collide with a past entry never hijacks a new one. Executed and canceled entries are deliberately excluded from the picker, since there's nothing left to act on.
+
 ### Date restrictions
 
 To keep the ledger honest, new entries are date-restricted:

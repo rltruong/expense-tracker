@@ -1501,7 +1501,11 @@ function matchRules(text){
 function findPlanningMatches(desc){
   if(!desc.trim())return[];
   const lower=desc.trim().toLowerCase();
-  return expenses.filter(e=>isPlanningInstance(e.instance)&&e.desc.trim().toLowerCase()===lower);
+  // Only surface entries that still have something to act on. Executed and canceled
+  // entries are "done" — re-opening them when adding a fresh expense is never the intent.
+  return expenses.filter(e=>isPlanningInstance(e.instance)
+    &&e.status!=='executed'&&e.status!=='canceled'
+    &&e.desc.trim().toLowerCase()===lower);
 }
 
 function onDescInput(){
@@ -1555,8 +1559,9 @@ function onDescInput(){
   const curInstance=iSel.value;
   if(isPlanningInstance(curInstance)){
     const matches=findPlanningMatches(desc);
-    if(matches.length===1){loadIntoForm(matches[0]);picker.classList.remove('visible');}
-    else if(matches.length>1){renderMatchPicker(matches);picker.classList.add('visible');}
+    // Option B: never auto-load silently. Any match (even one) surfaces the picker;
+    // the form is only overwritten when the user explicitly clicks a row.
+    if(matches.length>=1){renderMatchPicker(matches);picker.classList.add('visible');}
     else{picker.classList.remove('visible');}
   }else{picker.classList.remove('visible');}
 
@@ -1755,8 +1760,10 @@ function onInstanceChange(userInitiated=true){
   if(userInitiated&&isPlanning&&editingId===null){
     const desc=document.getElementById('f-desc').value;
     const matches=findPlanningMatches(desc);
-    if(matches.length===1){loadIntoForm(matches[0]);document.getElementById('match-picker').classList.remove('visible');}
-    else if(matches.length>1){renderMatchPicker(matches);document.getElementById('match-picker').classList.add('visible');}
+    const picker=document.getElementById('match-picker');
+    // Option B: surface the picker for any match (even one) instead of auto-loading.
+    if(matches.length>=1){renderMatchPicker(matches);picker.classList.add('visible');}
+    else{picker.classList.remove('visible');}
   }
   // Recompute indulgence/bounty hints for the new instance context
   updateIndulgenceOptions();
