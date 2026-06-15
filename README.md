@@ -16,6 +16,7 @@ The entire app is one `index.html` file — vanilla HTML/CSS/JavaScript with no 
 - **Drag-and-drop ordering**, collapsible month/week grouping, and dual sort modes (by date logged vs. by planned date).
 - **Summary dashboards** — breakdowns by instance, category, and status, with bar and pie charts.
 - **Searchable log** — a global search box on top of the instance/category/status filters, with a one-tap **Reset filters**. Filters decide what's shown; search only drills down within them.
+- **Duplicate as new** — a ⧉ button on each log card opens a pre-filled Add draft (description, full price, category, location) as a fresh **Expense**, so repeat purchases take seconds. Metadata and discounts deliberately reset; the date defaults to today.
 - **Slash commands & autofill** — type `/gas`, `/claude`, `/icloud`, etc. to prefill recurring entries.
 - **Cross-device sync** via Supabase with email/password auth and row-level security; falls back to `localStorage` when offline.
 
@@ -253,7 +254,7 @@ This tracker was built iteratively across several sessions. Notable milestones:
 - Added the Hobonichi Weeks journaling layer: transcription checkboxes, ⏳/☑️ day hints, monthly roll-forward for open bounties, and the physical sticker-placement workflow.
 - Added drag-and-drop ordering, dual sort modes, collapsible month/week grouping, and summary charts.
 - Added the `Transcribe to Memo` label beside the transcription checkbox on non-planning expense cards.
-- **Latest change:** the Summary's spend rollups (Total spent and the category/instance breakdowns) now compute **net out-of-pocket** for split bills via a `netPaid` helper — reimbursements received are subtracted, and your share is read from the split field — so shared costs no longer overcount. Discount metrics (Total saved, Full price value) stay gross by design. Earlier in the same line of work: the planning-match picker stopped auto-hijacking new expenses (executed/canceled entries are excluded and a single match now surfaces the picker instead of silently loading), a global search box and Reset filters landed in the Expense log, the `/delta` shortcut gained a backward direction, and location suggestions became a persistent `knownLocations` list surviving month clears.
+- **Latest change:** each Expense log card gained a **⧉ Duplicate** button that opens a pre-filled Add draft as a new Expense — carrying description, full price, category, and location, while resetting instance, discounts, and all per-transaction metadata, with the date defaulting to today. Earlier in the same line of work: the Summary's spend rollups switched to net out-of-pocket for split bills, the planning-match picker stopped auto-hijacking new expenses, a global search box and Reset filters landed in the Expense log, the `/delta` shortcut gained a backward direction, and location suggestions became a persistent `knownLocations` list surviving month clears.
 
 ---
 

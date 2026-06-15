@@ -91,6 +91,8 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
 .del-btn:hover{color:#c0392b}
 .edit-btn{background:none;border:1px solid #ddd;border-radius:6px;cursor:pointer;color:#666;font-size:13px;padding:4px 10px;font-family:inherit}
 .edit-btn:hover{border-color:#999;color:#1a1a1a}
+.dup-btn{background:none;border:none;cursor:pointer;color:#bbb;font-size:16px;padding:2px 4px;line-height:1}
+.dup-btn:hover{color:#1a1a1a}
 .section-head{font-size:12px;font-weight:600;color:#888;margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em}
 .summary-section{border:1px solid #eee;border-radius:8px;margin-bottom:8px;background:#fff;overflow:hidden}
 .summary-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;cursor:pointer;user-select:none;font-size:12px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.05em}
@@ -655,12 +657,13 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
       </div>
     </div>
 
-    <div class="ref-section" data-keywords="expense log search filter reset instance category status drill down query find narrow sort">
+    <div class="ref-section" data-keywords="expense log search filter reset instance category status drill down query find narrow sort duplicate copy clone repeat new entry button">
       <div class="ref-head" onclick="toggleRefSection(this)"><span>Expense log — search &amp; filters</span><span class="chev">▶</span></div>
       <div class="ref-body">
         <p><strong>Search box:</strong> a global query across each entry's description, location, category, instance and status labels, savings type/details, recipient note, split details, and amounts. Multiple words are AND-matched (all must appear).</p>
         <p><strong>Filters take priority:</strong> the Instance / Category / Status dropdowns decide what's on screen first; the search box only drills down within that subset. So filtering to "Food" and then searching narrows to Food entries that also match the query — search never widens past the filters.</p>
         <p><strong>Reset filters</strong> clears the search box and all three dropdowns at once. It leaves the sort mode alone, since sort is a view preference rather than a filter.</p>
+        <p><strong>Duplicate (⧉):</strong> opens a pre-filled <em>Add expense</em> draft from any card — copying description, full price, category, and location as a brand-new <strong>Expense</strong>. The instance, status, discount, split, recipient, tags, and dates are all reset (date defaults to today), and nothing is saved until you press Add, so you can tweak first or cancel. Handy for repeat purchases of the same thing.</p>
       </div>
     </div>
 
@@ -2573,6 +2576,7 @@ function renderCard(e){
         })():''}
         <div style="display:flex;gap:4px;align-items:center;margin-top:2px">
           <button class="edit-btn" onclick="editEntry(${e.id})">Edit</button>
+          <button class="dup-btn" onclick="duplicateEntry(${e.id})" title="Duplicate as a new expense">⧉</button>
           <button class="del-btn" onclick="deleteExpense(${e.id})">🗑</button>
         </div>
       </div>
@@ -2616,6 +2620,37 @@ function editEntry(id){
       const len=desc.value.length;
       desc.setSelectionRange(len,len);
     },600);
+  },100);
+}
+
+// Duplicate an entry as a brand-new Expense draft (pre-filled, not yet saved).
+// Carries only desc, full price, category, and location; instance forced to Expense.
+// Everything else (status, split, recipient, tags, savings/discount, planned/actual
+// dates, journal flag) is intentionally dropped — discounts reset, so paid defaults to
+// full at save. Date is left at today via clearForm(), since a duplicate is a new
+// transaction. editingId is cleared first so this saves as a new row, never an overwrite.
+function duplicateEntry(id){
+  const src=expenses.find(x=>x.id===id);if(!src)return;
+  editingId=null;                       // ensure NEW entry, not an edit of the source
+  switchTab('add');
+  clearForm();                          // resets fields, hides edit banner, sets date=today
+  document.getElementById('f-instance').value='expense';
+  onInstanceChange(false);              // expense UI; no planning/match side effects
+  document.getElementById('f-desc').value=src.desc||'';
+  document.getElementById('f-full').value=(src.full!=null&&!isNaN(src.full)&&src.full>0)?parseFloat(src.full).toFixed(2):'';
+  document.getElementById('f-category').value=src.category||'';
+  document.getElementById('f-location').value=src.location||'';
+  document.getElementById('f-date').value=today;
+  updateDateDisplay();
+  showToast('Duplicated as a new expense — review and save.');
+  // Pulse + scroll the description into view, mirroring the edit affordance.
+  setTimeout(()=>{
+    const desc=document.getElementById('f-desc');
+    if(!desc)return;
+    desc.classList.remove('edit-pulse');
+    void desc.offsetWidth;
+    desc.classList.add('edit-pulse');
+    desc.scrollIntoView({behavior:'smooth',block:'center'});
   },100);
 }
 
