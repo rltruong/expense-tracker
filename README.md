@@ -83,6 +83,18 @@ Food · Vehicle and Transportation · Miscellaneous · Home and Housing · Healt
 
 ---
 
+## Bill splitting & net spend
+
+Any entry can be flagged as split, recording a `direction`, `amount`, `with`, and `via`. Splits feed into the Summary's spend rollups through a single `netPaid(e)` helper, so the headline numbers reflect what you actually bore rather than the gross bill:
+
+- **No split** → `paid` is used as-is.
+- **"Others paid me"** → `paid − amount`, floored at 0. You fronted the gross bill and a friend reimbursed their share, so the reimbursement is subtracted. (Sushi lunch: `128.72 − 65.00 = 63.72`.)
+- **"I paid others"** → your share `amount` when recorded, otherwise `paid`. This covers both logging styles: entering only your portion as the main amount, *or* entering the gross bill and putting your portion in the share field. Either way the total reflects your share.
+
+Which numbers this affects: **Total spent** (the donut centers) and the **category** and **instance** breakdowns all use `netPaid`. **Total saved** and **Full price value** deliberately stay gross — they measure discounts, a separate axis from reimbursement, and netting them would conflate the two. One consequence: if you log the *gross* bill in the main amount on a split entry, Full price value will show that gross figure for the entry, not your share.
+
+---
+
 ## The planning & journaling system
 
 This is the part that makes the app unusual. It's designed to pair a digital ledger with a physical planner.
@@ -241,7 +253,7 @@ This tracker was built iteratively across several sessions. Notable milestones:
 - Added the Hobonichi Weeks journaling layer: transcription checkboxes, ⏳/☑️ day hints, monthly roll-forward for open bounties, and the physical sticker-placement workflow.
 - Added drag-and-drop ordering, dual sort modes, collapsible month/week grouping, and summary charts.
 - Added the `Transcribe to Memo` label beside the transcription checkbox on non-planning expense cards.
-- **Latest change:** the Expense log gained a **global search box** (matches description, location, category, instance/status labels, savings, recipient, split, and amounts) layered under the existing filters, plus a **Reset filters** button. The `/delta` shortcut in Savings details gained a **backward direction** (`/delta $Y` → `$X /delta $Y`, symmetric inverse: `X = Y + paid`). Location/URL suggestions are now backed by a **persistent `knownLocations` list** that survives month clears; the Supabase row format changed from a bare array to `{entries, locations}` with auto-migration.
+- **Latest change:** the Summary's spend rollups (Total spent and the category/instance breakdowns) now compute **net out-of-pocket** for split bills via a `netPaid` helper — reimbursements received are subtracted, and your share is read from the split field — so shared costs no longer overcount. Discount metrics (Total saved, Full price value) stay gross by design. Earlier in the same line of work: the planning-match picker stopped auto-hijacking new expenses (executed/canceled entries are excluded and a single match now surfaces the picker instead of silently loading), a global search box and Reset filters landed in the Expense log, the `/delta` shortcut gained a backward direction, and location suggestions became a persistent `knownLocations` list surviving month clears.
 
 ---
 

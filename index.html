@@ -664,7 +664,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
       </div>
     </div>
 
-    <div class="ref-section" data-keywords="summary stat total spent saved full price bounties pending expenses savings pie chart by instance category status executed across months entire log">
+    <div class="ref-section" data-keywords="summary stat total spent saved full price bounties pending expenses savings pie chart by instance category status executed across months entire log split bill net reimbursement share">
       <div class="ref-head" onclick="toggleRefSection(this)"><span>Summary tab</span><span class="chev">▶</span></div>
       <div class="ref-body">
         <p><strong>Scope:</strong> every figure on the Summary tab is computed from your <strong>entire expense log across all months</strong> — it is not limited to the current month or to what's visible in the log view.</p>
@@ -674,6 +674,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
           <li><strong>Bounties total:</strong> amount paid across all executed bounty tiers (Bounty, Big bounty, Mega bounty).</li>
           <li><strong>Pending expenses / Pending savings:</strong> the projected amount and projected savings of planned expenses and bounties that haven't been executed yet. They move into the realized totals once you mark the entry Executed.</li>
         </ul>
+        <p><strong>Split bills (net spend):</strong> Total spent and the by-instance / by-category breakdowns use <em>net out-of-pocket</em> for split entries. If others reimbursed you ("Others paid me"), the reimbursement is subtracted; if you only covered your share ("I paid others"), your share is used. Total saved and Full price value stay gross, since they track discounts rather than reimbursement.</p>
         <p><strong>By instance:</strong> a pie of realized spend by instance type, with Total spent in the center. Slices sum to Total spent (pending entries aren't included).</p>
         <p><strong>By category:</strong> the same realized spend, grouped by category.</p>
         <p><strong>Bounties &amp; planned — by status:</strong> a count-based pie of every planned/bounty entry by status (Executed, In progress, Greenlit, Canceled), so you can see how many commitments have actually executed. The center shows the count of executed entries.</p>
@@ -2767,13 +2768,27 @@ function importJSON(event){
   reader.readAsText(file);
 }
 
+// Net out-of-pocket for an entry, accounting for bill splits.
+//   "Others paid me"  → you fronted the gross; subtract the reimbursement you received.
+//   "I paid others"   → you only owed your share; use it when recorded, else the amount
+//                       already is your share (Style A) so fall back to paid.
+//   no split          → paid is already your cost.
+// Result floored at 0. Only spend rollups use this; discount metrics (saved/full) stay gross.
+function netPaid(e){
+  const paid=e.paid||0;
+  if(!e.split)return paid;
+  const amt=e.split.amount||0;
+  if(e.split.direction==='received')return Math.max(0,Math.round((paid-amt)*100)/100);
+  if(e.split.direction==='paid')return amt>0?amt:paid;
+  return paid;
+}
 function renderSummary(){
   // Pending = a planned expense or bounty that hasn't been executed yet. Excluded from
   // the realized totals; surfaced separately in the Pending boxes.
   const isPending=e=>isPlanningInstance(e.instance)&&e.status!=='executed';
   const counted=expenses.filter(e=>!isPending(e));
   const pending=expenses.filter(isPending);
-  const total=counted.reduce((a,e)=>a+(e.paid||0),0);
+  const total=counted.reduce((a,e)=>a+netPaid(e),0);
   const totalSaved=counted.reduce((a,e)=>a+(e.saved||0),0);
   const totalFull=counted.reduce((a,e)=>a+(e.full||0),0);
   const bountyTotal=expenses.filter(e=>isBountyInstance(e.instance)&&e.status==='executed').reduce((a,e)=>a+(e.paid||0),0);
@@ -2791,7 +2806,7 @@ function renderSummary(){
   // not under 'planned', so the pie correctly reflects indulgence spend rather than hiding it.
   const byInstance={};counted.forEach(e=>{
     const key=(e.instance==='planned'&&e.indulgenceTag&&e.indulgenceTag.startsWith('indulgence'))?e.indulgenceTag:e.instance;
-    byInstance[key]=(byInstance[key]||0)+(e.paid||0);
+    byInstance[key]=(byInstance[key]||0)+netPaid(e);
   });
   document.getElementById('instance-breakdown').innerHTML=renderBreakdown(byInstance,total,INSTANCE_LABELS,BADGE_CLASS,false,'instance');
   drawDonut('instance-pie','instance-legend',
@@ -2799,7 +2814,7 @@ function renderSummary(){
     fmt(total),'total spent');
 
   // By category — realized spend only, consistent with Total spent in the center.
-  const byCategory={};counted.forEach(e=>{byCategory[e.category]=(byCategory[e.category]||0)+(e.paid||0);});
+  const byCategory={};counted.forEach(e=>{byCategory[e.category]=(byCategory[e.category]||0)+netPaid(e);});
   drawDonut('category-pie','category-legend',
     Object.entries(byCategory).map(([cat,val])=>({label:cat,value:val,color:(CAT_META[cat]&&CAT_META[cat].hex)||'#ccc'})),
     fmt(total),'total spent');
