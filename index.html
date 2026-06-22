@@ -38,6 +38,9 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
 .expense-item.recorded .exp-amount,
 .expense-item.recorded .loc-block,
 .expense-item.recorded .pmeta-item span{text-decoration:line-through;opacity:0.6}
+/* Flagged = description contains 🚩 = "incomplete, fix me". Soft light-red fill. */
+.expense-item.flagged{background:#FDEEEB;border-color:#FA9F8C}
+.review-check{color:#B23A1E;font-weight:600}
 .journal-check{font-size:12px;color:#888;display:inline-flex;align-items:center;gap:4px;cursor:pointer;user-select:none;font-weight:normal;text-transform:none;letter-spacing:0;flex-shrink:0;white-space:nowrap;line-height:1.4}
 .journal-check input{margin:0;width:auto;cursor:pointer;flex-shrink:0}
 .expense-item.dragging{opacity:0.4;box-shadow:none}
@@ -196,6 +199,11 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
   <button class="tab" onclick="switchTab('log')">Expense log</button>
   <button class="tab" onclick="switchTab('summary')">Summary</button>
   <button class="tab" onclick="switchTab('reference')">Reference</button>
+</div>
+
+<div id="sync-warn" style="display:none;align-items:center;gap:7px;background:#FFF4E5;border:1px solid #E0A23C;color:#8A5A00;border-radius:8px;padding:7px 11px;margin-top:10px;font-size:12px;line-height:1.4">
+  <span style="flex-shrink:0">⚠️</span>
+  <span>Offline — changes save on this device but aren't syncing to the cloud. Sign in again to resume sync.</span>
 </div>
 
 <!-- ADD TAB -->
@@ -600,6 +608,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
           <tr><td><code>/claude</code></td><td>Claude Pro 🤖</td><td>$20.00</td><td>20th</td></tr>
         </table>
         <p><strong>Savings shortcuts:</strong> <code>/dsc</code> → 🟠 Discover Cashback, <code>/chs</code> → 🔷 Chase Ultimate Reward, <code>/ven</code> → ✌🏻 Venmo Balance.</p>
+        <p><strong>Inline flag:</strong> <code>/flag</code> expands to 🚩 anywhere in the description (not just as the whole field) to mark an entry as incomplete. See <em>Flagging incomplete entries</em> below.</p>
         <p><strong>Delta calculation in Savings Details</strong> — both directions trigger on a trailing space:</p>
         <ul>
           <li><strong>Forward</strong> <code>$X.XX /delta</code> + space → <code>$X.XX Δ $Y.YY</code>, where Y.YY = X.XX minus the amount paid (or full price if paid is 0/empty). Reads as "balance went from X to Y." Useful for the remaining gift card / store credit balance after an expense.</li>
@@ -629,6 +638,20 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
       </div>
     </div>
 
+    <div class="ref-section" data-keywords="flag flagged 🚩 incomplete missing info review reviewed red highlight slash command edit fix">
+      <div class="ref-head" onclick="toggleRefSection(this)"><span>Flagging incomplete entries 🚩</span><span class="chev">▶</span></div>
+      <div class="ref-body">
+        <p>When you log something in a hurry and know it's missing details, drop a <strong>🚩</strong> in the description so you remember to come back and finish it.</p>
+        <ul>
+          <li><strong>Adding the flag:</strong> type <code>/flag</code> anywhere in the description and it becomes 🚩 inline (works while creating <em>and</em> while editing). You can also just type or paste the 🚩 emoji directly.</li>
+          <li><strong>What it does:</strong> any entry whose description contains 🚩 turns <span style="background:#FDEEEB;border:1px solid #FA9F8C;padding:1px 6px;border-radius:3px">light red</span> in the Expense Log — an at-a-glance "fix me" signal.</li>
+          <li><strong>Clearing it:</strong> a <strong>Reviewed?</strong> checkbox appears at the bottom-left of a flagged card. Ticking it removes the 🚩, restores the normal background, and the Reviewed control disappears. (You can also clear it by editing the entry and deleting the 🚩 yourself.)</li>
+          <li><strong>Transcription gate:</strong> while an entry is flagged, its journal/Transcribe checkbox is <strong>disabled</strong> — you can't mark it transcribed until the flag is cleared. This keeps incomplete entries out of the planner.</li>
+        </ul>
+        <p>Flagged entries never count as recorded, and the 🚩 is just text in the description — it has no effect on amounts, categories, or summaries.</p>
+      </div>
+    </div>
+
     <div class="ref-section" data-keywords="journal page hint checkbox recorded transcription hobonichi sticker bounty indulgence placement hourglass checkmark memo">
       <div class="ref-head" onclick="toggleRefSection(this)"><span>Journal page hints</span><span class="chev">▶</span></div>
       <div class="ref-body">
@@ -647,6 +670,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
           <li>Other planning instances (including indulgence-tagged): when <code>plannedDate</code> or <code>actualDate</code> exists.</li>
         </ul>
         <p>Checking the box dims the entry visually and persists across sessions. Open bounties reset their recorded state at month boundaries.</p>
+        <p><strong>Flag gate:</strong> if an entry's description contains a 🚩, this checkbox is disabled until the flag is cleared (see <em>Flagging incomplete entries</em>).</p>
         <p><strong>Sticker placement workflow:</strong></p>
         <p>Inventory: 1 bounty sticker per tier per month (3 total) + 5 indulgence stickers per month. One sticker per tier/slot per month — that's it.</p>
         <ul>
@@ -684,6 +708,15 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
         <p>Charts redraw whenever you open the Summary tab.</p>
       </div>
     </div>
+
+    <div class="ref-section" data-keywords="sign in login auth session sync offline supabase 72 hour reauthenticate localStorage cache banner cloud">
+      <div class="ref-head" onclick="toggleRefSection(this)"><span>Sign-in &amp; sync</span><span class="chev">▶</span></div>
+      <div class="ref-body">
+        <p><strong>Sign-in window:</strong> once you sign in, you stay signed in on a rolling <strong>72-hour</strong> basis. Every time you open the app the clock resets, so the sign-in screen only returns after roughly 72 hours of <em>not</em> opening it — not 72 hours after your last live session.</p>
+        <p><strong>iOS caveat:</strong> the 72h timestamp lives in the same local storage iOS can purge for home-screen web apps. If iOS wipes storage entirely, the timestamp goes with it and you'll need to sign in again regardless — there's no way around that with browser storage alone.</p>
+        <p><strong>Offline banner:</strong> if there's no live cloud session (or a save fails), an <span style="background:#FFF4E5;border:1px solid #E0A23C;color:#8A5A00;padding:1px 6px;border-radius:4px">⚠️ Offline</span> banner appears under the tabs. Your edits still save on the device, but they aren't reaching the cloud until you sign in again. Sign out and back in to resume sync.</p>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -719,8 +752,10 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
 // ── Authentication gate ───────────────────────────────────────────────────────
 // Auth is handled by Supabase (email + password → signed session token).
 // The anon key is safe to ship here; data is protected by RLS + login, not by hiding this key.
-// Sessions are stored in localStorage and auto-refreshed. A 72-hour local timestamp allows
-// the gate to be skipped on iOS PWA launches where the Supabase token gets purged.
+// Sessions are stored in localStorage and auto-refreshed. A 72-hour local timestamp lets the
+// gate be skipped on iOS PWA launches where the Supabase token gets purged; the window slides
+// forward on every open. When there's no live session, setSyncState(false) raises the offline
+// banner — local edits persist but don't reach the cloud until the next successful sign-in.
 
 async function gateSubmit() {
   const emailEl = document.getElementById('gate-email');
@@ -739,25 +774,33 @@ async function gateSubmit() {
   }
   document.getElementById('gate').style.display = 'none';
   try { localStorage.setItem(AUTH_TS_KEY, Date.now()); } catch(e) {}
+  setSyncState(true);
   input.value = '';
   err.textContent = '';
   loadData();
 }
 
 async function gateCheck() {
-  // Returns true if a valid Supabase session exists, or if the user logged in within 72 hours.
-  // The 72-hour fallback handles iOS PWA storage purges: if iOS clears the Supabase token
-  // from localStorage, we skip the gate and use the locally cached data instead.
+  // Returns true if a valid Supabase session exists, or if the app was opened within the
+  // last 72 hours. The 72h window SLIDES: every successful open (live session OR cached
+  // fallback) resets the clock, so the gate only reappears after ~72h of non-use. The
+  // fallback also handles iOS PWA token purges — though a full localStorage wipe clears
+  // this timestamp too, in which case re-login is unavoidable.
   const { data } = await sbClient.auth.getSession();
   if (data && data.session) {
     document.getElementById('gate').style.display = 'none';
     try { localStorage.setItem(AUTH_TS_KEY, Date.now()); } catch(e) {}
+    setSyncState(true);          // live Supabase session → cloud reads/writes work
     return true;
   }
   try {
     const lastAuth = parseInt(localStorage.getItem(AUTH_TS_KEY) || '0', 10);
     if (lastAuth && (Date.now() - lastAuth) < AUTH_TTL_MS) {
       document.getElementById('gate').style.display = 'none';
+      // Sliding window: extend the 72h on every successful open so the gate only
+      // returns after ~72h of NOT using the app — not 72h after the last live session.
+      try { localStorage.setItem(AUTH_TS_KEY, Date.now()); } catch(e) {}
+      setSyncState(false);       // running on cache; no live session → not syncing
       return true; // Skip gate; data loads from localStorage cache via sbLoad fallback
     }
   } catch(e) {}
@@ -796,28 +839,41 @@ const SB_ROW_ID = 1;
 // The client persists the session in localStorage and auto-refreshes the token.
 const sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// ── Sync-state indicator ──────────────────────────────────────────────────────
+// syncLive=false means we're reading/writing the localStorage cache only (no live
+// Supabase session, or a failed request). Edits still persist on THIS device but are
+// not reaching the cloud, so the banner warns you to expect drift until you re-auth.
+let syncLive = true;
+function setSyncState(live) {
+  syncLive = !!live;
+  const el = document.getElementById('sync-warn');
+  if (el) el.style.display = live ? 'none' : 'flex';
+}
+
 async function sbLoad() {
   try {
     const { data, error } = await sbClient
       .from('expenses')
       .select('data')
       .eq('id', SB_ROW_ID);
-    if (error) return null;            // failed/not authorized → caller uses cache
-    if (!data || !data.length) return { entries: [], locations: [] };
+    if (error) { setSyncState(false); return null; }   // failed/not authorized → caller uses cache
+    if (!data || !data.length) { setSyncState(true); return { entries: [], locations: [] }; }
     const raw = data[0].data;
     // Support both old format (bare array) and new wrapped format ({entries, locations}).
     // Old format is migrated transparently on the next saveData() call.
+    setSyncState(true);
     if (Array.isArray(raw)) return { entries: raw, locations: [] };
     return { entries: Array.isArray(raw.entries) ? raw.entries : [], locations: Array.isArray(raw.locations) ? raw.locations : [] };
-  } catch(e) { return null; }
+  } catch(e) { setSyncState(false); return null; }
 }
 
 async function sbSave(expensesArr) {
   try {
-    await sbClient
+    const { error } = await sbClient
       .from('expenses')
       .upsert({ id: SB_ROW_ID, data: { entries: expensesArr, locations: knownLocations } });
-  } catch(e) {}
+    setSyncState(!error);   // a rejected upsert (RLS / no session) flips the banner on
+  } catch(e) { setSyncState(false); }
 }
 // ─────────────────────────────────────────────────────────────────────────────
 const CAT_META={'Food':{hex:'#FFA723'},'Vehicle and Transportation':{hex:'#FFC12A'},'Miscellaneous':{hex:'#68CDC4'},'Home and Housing':{hex:'#DB3129'},'Health, Medical, and Personal Care':{hex:'#F4A0BC'},'Clothing':{hex:'#A89BC4'},'Utilities':{hex:'#C73B92'}};
@@ -916,6 +972,48 @@ function toggleRecorded(id,checked){
     if(checked)item.classList.add('recorded');
     else item.classList.remove('recorded');
   }
+}
+
+// ── 🚩 Flag (incomplete-entry marker) ─────────────────────────────────────────
+// A 🚩 anywhere in the description marks an entry as "missing info, fix ASAP". It
+// turns the card light-red and blocks the journal/transcription checkbox until cleared.
+const FLAG_EMOJI='🚩';
+function isFlagged(e){return !!(e&&e.desc&&e.desc.indexOf(FLAG_EMOJI)!==-1);}
+// Strip every flag and tidy the whitespace the removal leaves behind (single-line safe;
+// collapses runs of spaces/tabs but preserves any newlines).
+function stripFlag(desc){
+  if(!desc)return desc;
+  return desc.split(FLAG_EMOJI).join('').replace(/[ \t]{2,}/g,' ').trim();
+}
+// "Reviewed?" action: clear the flag, persist, and re-render just this card so the red
+// fill, the Reviewed control, and the disabled journal checkbox all update in place.
+function reviewFlag(id){
+  const e=expenses.find(x=>x.id===id);
+  if(!e)return;
+  e.desc=stripFlag(e.desc);
+  saveData();
+  rerenderCard(id);
+}
+function rerenderCard(id){
+  const e=expenses.find(x=>x.id===id);
+  const node=document.getElementById('item-'+id);
+  if(!e||!node)return;
+  const tmp=document.createElement('div');
+  tmp.innerHTML=renderCard(e).trim();
+  const fresh=tmp.firstElementChild;
+  if(fresh)node.replaceWith(fresh);
+}
+// /flag → 🚩 inline token replacement. Active in both create and edit modes. Replaces
+// every "/flag" occurrence and keeps the caret just after the inserted emoji.
+function applyFlagShortcut(descEl){
+  const val=descEl.value;
+  if(val.indexOf('/flag')===-1)return false;
+  const caret=descEl.selectionStart;
+  const before=val.slice(0,caret);
+  descEl.value=val.split('/flag').join(FLAG_EMOJI);
+  const pos=before.split('/flag').join(FLAG_EMOJI).length;
+  try{descEl.setSelectionRange(pos,pos);}catch(e){}
+  return true;
 }
 
 const INDULGENCE_SLOTS=[
@@ -1513,8 +1611,9 @@ function findPlanningMatches(desc){
 }
 
 function onDescInput(){
-  if(editingId!==null)return;
   const descEl=document.getElementById('f-desc');
+  applyFlagShortcut(descEl); // /flag → 🚩, active in both create and edit modes
+  if(editingId!==null)return;
   let desc=descEl.value;
   // Check for slash command: trimmed value matches a known command exactly
   const trimmed=desc.trim();
@@ -2538,7 +2637,11 @@ function renderCard(e){
   const displayEmoji=INSTANCE_EMOJI[e.instance]||'';
   const displayBadgeClass=BADGE_CLASS[e.instance]||'';
   const isRec=isEffectivelyRecorded(e);
-  return`<div class="expense-item${isRec?' recorded':''}" id="item-${e.id}" draggable="true" ondragstart="onDragStart(event,${e.id})" ondragend="onDragEnd(event)" ondragover="onDragOver(event,${e.id})" ondrop="onDrop(event,${e.id})">
+  const flagged=isFlagged(e);
+  // Display invariant: a flagged entry never renders as recorded (and editing rebuilds the
+  // entry, dropping recorded, so the data invariant holds too). The red always wins.
+  const showRecorded=!flagged&&isRec;
+  return`<div class="expense-item${showRecorded?' recorded':''}${flagged?' flagged':''}" id="item-${e.id}" draggable="true" ondragstart="onDragStart(event,${e.id})" ondragend="onDragEnd(event)" ondragover="onDragOver(event,${e.id})" ondrop="onDrop(event,${e.id})">
     <div class="exp-top">
       <div style="display:flex;align-items:flex-start;gap:2px">
         <span class="drag-handle" title="Drag to reorder, or tap to select and swap" onclick="onHandleTap(${e.id},event)">⠿</span>
@@ -2588,10 +2691,23 @@ function renderCard(e){
     </div>
     ${e.recipientNote?`<div class="recipient-note">👤 Recipient note<span>${renderPersonField(e.recipientNote)}</span></div>`:''}
     ${e.split?`<div class="recipient-note">🔀 Split — ${e.split.direction==='received'?'received from':'paid to'} ${e.split.with?renderPersonField(e.split.with):'—'} via ${e.split.via}${e.split.amount?` · $${parseFloat(e.split.amount).toFixed(2)}`:''}${''}</div>`:''}
-    ${shouldShowJournalCheckbox(e)?`<div style="padding:8px 12px 4px;border-top:1px solid #f0f0f0;margin-top:4px"><label class="journal-check">
-      <input type="checkbox" ${isRec?'checked':''} onchange="toggleRecorded(${e.id},this.checked)">
-      ${journalLabelFor(e)}
-    </label></div>`:''}
+    ${(()=>{
+      // Bottom row holds the "Reviewed?" flag-clear control (left) and the journal /
+      // transcription checkbox (right). The Reviewed control appears whenever the entry is
+      // flagged — even when the journal checkbox itself is hidden — so a flag is always
+      // clearable from the card. While flagged, the journal checkbox is disabled.
+      const showJournal=shouldShowJournalCheckbox(e);
+      if(!flagged&&!showJournal)return'';
+      const reviewed=flagged?`<label class="journal-check review-check" title="Mark reviewed — removes the 🚩 and restores the entry">
+        <input type="checkbox" onchange="reviewFlag(${e.id})">
+        Reviewed?
+      </label>`:'';
+      const journal=showJournal?`<label class="journal-check"${flagged?' title="Clear the 🚩 first (mark Reviewed or remove it in the entry)" style="opacity:.45"':''}>
+        <input type="checkbox" ${showRecorded?'checked':''} ${flagged?'disabled':''} onchange="toggleRecorded(${e.id},this.checked)">
+        ${journalLabelFor(e)}
+      </label>`:'';
+      return`<div style="padding:8px 12px 4px;border-top:1px solid #f0f0f0;margin-top:4px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">${reviewed}${journal}</div>`;
+    })()}
   </div>`;
 }
 

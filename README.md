@@ -18,7 +18,8 @@ The entire app is one `index.html` file — vanilla HTML/CSS/JavaScript with no 
 - **Searchable log** — a global search box on top of the instance/category/status filters, with a one-tap **Reset filters**. Filters decide what's shown; search only drills down within them.
 - **Duplicate as new** — a ⧉ button on each log card opens a pre-filled Add draft (description, full price, category, location) as a fresh **Expense**, so repeat purchases take seconds. Metadata and discounts deliberately reset; the date defaults to today.
 - **Slash commands & autofill** — type `/gas`, `/claude`, `/icloud`, etc. to prefill recurring entries.
-- **Cross-device sync** via Supabase with email/password auth and row-level security; falls back to `localStorage` when offline.
+- **🚩 Flagging** — type `/flag` (or the emoji) in a description to mark an entry as incomplete. Flagged cards turn light red in the log and their journal/transcription checkbox is blocked until you clear the flag via the per-card **Reviewed?** control.
+- **Cross-device sync** via Supabase with email/password auth and row-level security; falls back to `localStorage` when offline. A rolling 72-hour sign-in window and an offline banner cover iOS PWA token purges (see [Sign-in & sync](#sign-in--sync)).
 
 ---
 
@@ -134,6 +135,16 @@ When the checkbox appears:
 
 Checking the box dims the card and persists across sessions; open bounties reset their recorded state at month boundaries.
 
+### Flagging incomplete entries 🚩
+
+Logging fast means sometimes leaving an entry half-finished. Type `/flag` anywhere in the description (it expands to 🚩 inline, while creating *or* editing), or just type the emoji. Any entry whose description contains a 🚩:
+
+- turns **light red** in the Expense log (`#FDEEEB` fill, soft `#FA9F8C` border) as a "fix me" signal;
+- shows a **Reviewed?** checkbox at the bottom-left of the card — ticking it strips the 🚩, restores the normal background, and removes the control;
+- has its **journal/transcription checkbox disabled** until the flag is cleared, so incomplete entries can't be marked transcribed into the planner.
+
+A flagged entry never counts as recorded. The 🚩 is just text in the description, so it has no effect on amounts, categories, or any Summary figure.
+
 ### Sticker placement
 
 Physical sticker inventory is one bounty sticker per tier per month (3 total) plus 5 indulgence stickers per month. Placement follows the page hint:
@@ -225,6 +236,12 @@ Open `index.html` in a browser (or serve it from any static host). Sign in with 
 - On load, the app tries Supabase first. A `null` result means the connection failed (and the local cache is used); an empty array means "connected but no data yet."
 - Every save writes to Supabase and mirrors to `localStorage`.
 - Per-device UI state (collapsed sections, sort mode, manual drag order) is stored locally and not synced.
+
+### Sign-in & sync
+
+- **Rolling 72-hour window.** After sign-in you stay signed in for 72 hours, and the window *slides* — every app open (whether on a live Supabase session or the cached fallback) resets the clock via the `auth_last_ok` timestamp. The gate only returns after ~72h of not opening the app, rather than 72h after the last live session. This is the change that keeps the login screen from reappearing every couple of days under normal use.
+- **iOS purge caveat — stated honestly.** The fallback timestamp lives in the *same* `localStorage` that iOS (WebKit/ITP) can wipe for home-screen web apps. The 72h fallback only papers over Supabase's own session/refresh failures; a genuine full-storage purge clears `auth_last_ok` too, and re-login is then unavoidable. There's no pure-`localStorage` way around that.
+- **Offline banner.** When there's no live cloud session — or a read/write fails — `setSyncState(false)` shows an "⚠️ Offline" banner under the tabs. Edits still persist to the device cache (`expenses_v9`), but RLS rejects the cloud upsert silently, so they don't reach Supabase until you sign in again. Because the window now slides, you could otherwise sit in this not-syncing state for a while without noticing; the banner is the signal to re-auth.
 
 ## Archiving & clearing
 
