@@ -19,6 +19,8 @@ The entire app is one `index.html` file — vanilla HTML/CSS/JavaScript with no 
 - **Duplicate as new** — a ⧉ button on each log card opens a pre-filled Add draft (description, full price, category, location) as a fresh **Expense**, so repeat purchases take seconds. Metadata and discounts deliberately reset; the date defaults to today.
 - **Slash commands & autofill** — type `/gas`, `/claude`, `/icloud`, etc. to prefill recurring entries.
 - **🚩 Flagging** — type `/flag` (or the emoji) in a description to mark an entry as incomplete. Flagged cards turn light red in the log and their journal/transcription checkbox is blocked until you clear the flag via the per-card **Reviewed?** control.
+- **Manage saved locations** — a panel in the Reference tab to rename or remove remembered locations. Renaming/removing also propagates to the entries that use the location (with a confirmation count), so it never silently reappears.
+- **Unsaved draft recovery** — a half-filled Add-expense form is saved continuously and restored on reload or app switch (new entries only), cleared on Add or Clear. Works on mobile and desktop.
 - **Cross-device sync** via Supabase with email/password auth and row-level security; falls back to `localStorage` when offline. A rolling 72-hour sign-in window and an offline banner cover iOS PWA token purges (see [Sign-in & sync](#sign-in--sync)).
 
 ---
@@ -240,6 +242,7 @@ Open `index.html` in a browser (or serve it from any static host). Sign in with 
 ### Sign-in & sync
 
 - **Rolling 72-hour window.** After sign-in you stay signed in for 72 hours, and the window *slides* — every app open (whether on a live Supabase session or the cached fallback) resets the clock via the `auth_last_ok` timestamp. The gate only returns after ~72h of not opening the app, rather than 72h after the last live session. This is the change that keeps the login screen from reappearing every couple of days under normal use.
+- **The window is checked synchronously, first.** On load, the 72h timestamp is read *before* (and independently of) the async Supabase `getSession()` call — including a tiny inline script that runs during page parse to hide the gate before it can paint. This matters because a slow, hung, or throwing `getSession()` (e.g. a corrupted/expired stored token, or the Supabase CDN being unreachable) must never strand you on the login screen while you're still inside the window. The live session is then confirmed in the background only to drive the offline banner.
 - **iOS purge caveat — stated honestly.** The fallback timestamp lives in the *same* `localStorage` that iOS (WebKit/ITP) can wipe for home-screen web apps. The 72h fallback only papers over Supabase's own session/refresh failures; a genuine full-storage purge clears `auth_last_ok` too, and re-login is then unavoidable. There's no pure-`localStorage` way around that.
 - **Offline banner.** When there's no live cloud session — or a read/write fails — `setSyncState(false)` shows an "⚠️ Offline" banner under the tabs. Edits still persist to the device cache (`expenses_v9`), but RLS rejects the cloud upsert silently, so they don't reach Supabase until you sign in again. Because the window now slides, you could otherwise sit in this not-syncing state for a while without noticing; the banner is the signal to re-auth.
 
@@ -258,7 +261,18 @@ A low-friction monthly workflow: export at month end → clear the month → kee
 
 Location suggestions are backed by a **persistent `knownLocations` list** that is accumulated on every save and survives month clears independently of the expense entries. Even after wiping all entries, the datalist in the Location field still shows every vendor/URL you've ever typed. New locations are appended on save; the list is sorted alphabetically.
 
+**Managing locations.** The Reference tab has a *Manage saved locations* panel. Because `saveData()` re-harvests locations from the entries themselves, edits there can't be suggestion-only — they also touch matching entries:
+
+- **Rename** rewrites `knownLocations` *and* the `location` field on every entry using the old name (confirmed with a count). This is how you fix a typo everywhere at once.
+- **Remove** drops the suggestion; if any entries still use it you confirm a count and it's cleared from those entries too — otherwise it would just reappear on the next save. A location used by zero entries is removed silently.
+
 **Data shape note:** the Supabase row now stores `{ entries: [...], locations: [...] }` instead of a bare array. The code auto-migrates old bare-array data on first load. If you ever need to revert to code that predates this change, update `sbLoad` to handle the new shape (or export/reimport via the Data panel first).
+
+### Unsaved Add-expense drafts
+
+A half-filled Add form is snapshotted to `localStorage` (`expense_draft_v1`) on every input — debounced, plus a hard flush on `pagehide`/`visibilitychange` so iOS can't lose it when the tab is backgrounded. On the next load (after the gate clears) the draft is restored and a brief toast confirms it. Restore re-fires the form's conditional handlers (`onInstanceChange`, `onStatusChange`, `toggleSplit`, `toggleSavings`, etc.) so planning/split/savings sections come back in the right state, not just the raw values.
+
+Scope and lifecycle: **new entries only** (suppressed while `editingId !== null`), cleared on a committed Add and on the explicit Clear button, and re-saved when you prefill a duplicate. A draft with no meaningful content is discarded rather than stored.
 
 ---
 
@@ -271,7 +285,8 @@ This tracker was built iteratively across several sessions. Notable milestones:
 - Added the Hobonichi Weeks journaling layer: transcription checkboxes, ⏳/☑️ day hints, monthly roll-forward for open bounties, and the physical sticker-placement workflow.
 - Added drag-and-drop ordering, dual sort modes, collapsible month/week grouping, and summary charts.
 - Added the `Transcribe to Memo` label beside the transcription checkbox on non-planning expense cards.
-- **Latest change:** each Expense log card gained a **⧉ Duplicate** button that opens a pre-filled Add draft as a new Expense — carrying description, full price, category, and location, while resetting instance, discounts, and all per-transaction metadata, with the date defaulting to today. Earlier in the same line of work: the Summary's spend rollups switched to net out-of-pocket for split bills, the planning-match picker stopped auto-hijacking new expenses, a global search box and Reset filters landed in the Expense log, the `/delta` shortcut gained a backward direction, and location suggestions became a persistent `knownLocations` list surviving month clears.
+- **Latest change:** added a **🚩 flag** for incomplete entries (`/flag` → 🚩, light-red card, a per-card *Reviewed?* control, and a transcription lock until cleared); a **Manage saved locations** panel in the Reference tab (rename/remove that also rewrites matching entries, with confirmation counts); and **unsaved Add-expense draft recovery** that restores a half-filled form after a reload or app switch. The login flow was also hardened: the 72-hour window now slides on every open and is checked synchronously *before* the async Supabase session call, so a slow/throwing `getSession()` can no longer strand you on the sign-in screen — with an offline banner surfacing local-only (non-syncing) state.
+- Earlier in this line of work: each Expense log card gained a **⧉ Duplicate** button that opens a pre-filled Add draft as a new Expense — carrying description, full price, category, and location, while resetting instance, discounts, and all per-transaction metadata, with the date defaulting to today. Before that: the Summary's spend rollups switched to net out-of-pocket for split bills, the planning-match picker stopped auto-hijacking new expenses, a global search box and Reset filters landed in the Expense log, the `/delta` shortcut gained a backward direction, and location suggestions became a persistent `knownLocations` list surviving month clears.
 
 ---
 

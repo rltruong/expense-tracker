@@ -41,6 +41,18 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
 /* Flagged = description contains 🚩 = "incomplete, fix me". Soft light-red fill. */
 .expense-item.flagged{background:#FDEEEB;border-color:#FA9F8C}
 .review-check{color:#B23A1E;font-weight:600}
+/* Saved-locations manager (Reference tab) */
+.loc-manager{max-height:340px;overflow-y:auto;margin-top:8px}
+.loc-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 2px;border-bottom:1px solid #f0f0f0}
+.loc-row:last-child{border-bottom:none}
+.loc-name{font-size:13px;color:#1a1a1a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.loc-edit{flex:1;min-width:0;font-size:13px;padding:5px 8px;border:1px solid #bbb;border-radius:6px;font-family:inherit;color:#1a1a1a}
+.loc-actions{display:flex;gap:4px;flex-shrink:0}
+.loc-btn{background:none;border:1px solid #e0e0e0;border-radius:6px;cursor:pointer;font-size:13px;width:28px;height:28px;line-height:1;color:#555;font-family:inherit;padding:0}
+.loc-btn:hover{background:#f5f5f2}
+.loc-del:hover{background:#fdecec;border-color:#f0b8b8;color:#c0392b}
+.loc-save{color:#1d7a4d;border-color:#bfe0cc}
+.loc-empty{color:#888;font-size:13px;margin:0}
 .journal-check{font-size:12px;color:#888;display:inline-flex;align-items:center;gap:4px;cursor:pointer;user-select:none;font-weight:normal;text-transform:none;letter-spacing:0;flex-shrink:0;white-space:nowrap;line-height:1.4}
 .journal-check input{margin:0;width:auto;cursor:pointer;flex-shrink:0}
 .expense-item.dragging{opacity:0.4;box-shadow:none}
@@ -192,6 +204,18 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
     <div id="gate-err"></div>
   </div>
 </div>
+<script>
+  // Fast path — runs during HTML parse, before the gate can paint. If the app was opened
+  // within the last 72h, hide the gate immediately so there's no login-screen flash and so a
+  // slow/failed Supabase load can't strand you on the gate. Values mirror AUTH_TS_KEY /
+  // AUTH_TTL_MS in the main script (kept literal here so this can run first, with no deps).
+  try {
+    var _laOk = parseInt(localStorage.getItem('auth_last_ok') || '0', 10);
+    if (_laOk && (Date.now() - _laOk) < 72*60*60*1000) {
+      document.getElementById('gate').style.display = 'none';
+    }
+  } catch(e) {}
+</script>
 
 <div style="padding:.5rem 0 1rem">
 <div class="tabs">
@@ -397,7 +421,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
   </div>
 
   <div class="btn-row">
-    <button class="btn-ghost" onclick="clearForm()">Clear</button>
+    <button class="btn-ghost" onclick="onClearClick()">Clear</button>
     <button class="btn-primary" id="submit-btn" onclick="submitExpense()">Add expense</button>
   </div>
 </div>
@@ -717,6 +741,26 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
         <p><strong>Offline banner:</strong> if there's no live cloud session (or a save fails), an <span style="background:#FFF4E5;border:1px solid #E0A23C;color:#8A5A00;padding:1px 6px;border-radius:4px">⚠️ Offline</span> banner appears under the tabs. Your edits still save on the device, but they aren't reaching the cloud until you sign in again. Sign out and back in to resume sync.</p>
       </div>
     </div>
+
+    <div class="ref-section" data-keywords="manage saved locations edit rename delete remove vendor url datalist suggestions cleanup typo">
+      <div class="ref-head" onclick="toggleRefSection(this)"><span>Manage saved locations</span><span class="chev">▶</span></div>
+      <div class="ref-body">
+        <p>Every location you type is remembered and offered as a suggestion in the Location field. Fix a typo with rename, or remove ones you no longer want.</p>
+        <ul>
+          <li><strong>Rename (✎):</strong> if existing entries use the old name, you'll confirm a count — the new name is then written to those entries too, so the fix propagates everywhere.</li>
+          <li><strong>Remove (×):</strong> deletes the suggestion. If entries still use it, you'll confirm and it's also cleared from those entries (otherwise it would reappear on the next save, since suggestions are re-harvested from your entries). A location used by no entries is removed without a prompt.</li>
+        </ul>
+        <div id="location-manager" class="loc-manager"></div>
+      </div>
+    </div>
+
+    <div class="ref-section" data-keywords="draft autosave unsaved persist restore add expense fields recover reload">
+      <div class="ref-head" onclick="toggleRefSection(this)"><span>Unsaved drafts</span><span class="chev">▶</span></div>
+      <div class="ref-body">
+        <p>If you start filling in the <strong>Add expense</strong> form and leave without pressing Add — reloading, switching apps, or closing the tab — your in-progress fields are kept and restored next time you open the app, with a brief "Restored unsaved draft" note.</p>
+        <p>This applies to <strong>new entries only</strong>, not edits of existing entries. The draft is saved continuously as you type (and flushed when the app is backgrounded, for iOS), and is cleared the moment you press Add or use the Clear button.</p>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -781,29 +825,41 @@ async function gateSubmit() {
 }
 
 async function gateCheck() {
-  // Returns true if a valid Supabase session exists, or if the app was opened within the
-  // last 72 hours. The 72h window SLIDES: every successful open (live session OR cached
-  // fallback) resets the clock, so the gate only reappears after ~72h of non-use. The
-  // fallback also handles iOS PWA token purges — though a full localStorage wipe clears
-  // this timestamp too, in which case re-login is unavoidable.
-  const { data } = await sbClient.auth.getSession();
-  if (data && data.session) {
-    document.getElementById('gate').style.display = 'none';
-    try { localStorage.setItem(AUTH_TS_KEY, Date.now()); } catch(e) {}
-    setSyncState(true);          // live Supabase session → cloud reads/writes work
-    return true;
-  }
+  // Decide whether to show the login gate. The 72-hour "recently opened" window is checked
+  // SYNCHRONOUSLY and FIRST, so a slow, hung, or throwing getSession() can never strand you on
+  // the login screen while you're still inside the window. The live session is then confirmed
+  // in the background only to set the offline banner. The window SLIDES — every open extends it,
+  // so the gate only returns after ~72h of non-use. (A full localStorage wipe clears the
+  // timestamp too, in which case re-login is unavoidable.)
+  let withinWindow = false;
   try {
     const lastAuth = parseInt(localStorage.getItem(AUTH_TS_KEY) || '0', 10);
-    if (lastAuth && (Date.now() - lastAuth) < AUTH_TTL_MS) {
+    withinWindow = !!(lastAuth && (Date.now() - lastAuth) < AUTH_TTL_MS);
+  } catch(e) {}
+
+  if (withinWindow) {
+    document.getElementById('gate').style.display = 'none';
+    try { localStorage.setItem(AUTH_TS_KEY, Date.now()); } catch(e) {}
+    // Confirm the live session in the background; any failure just raises the offline banner.
+    sbClient.auth.getSession()
+      .then(({ data }) => setSyncState(!!(data && data.session)))
+      .catch(() => setSyncState(false));
+    return true;
+  }
+
+  // Outside the window: confirm a live session before skipping the gate. Guarded so a throw
+  // here falls through to showing the gate rather than rejecting the whole check.
+  try {
+    const { data } = await sbClient.auth.getSession();
+    if (data && data.session) {
       document.getElementById('gate').style.display = 'none';
-      // Sliding window: extend the 72h on every successful open so the gate only
-      // returns after ~72h of NOT using the app — not 72h after the last live session.
       try { localStorage.setItem(AUTH_TS_KEY, Date.now()); } catch(e) {}
-      setSyncState(false);       // running on cache; no live session → not syncing
-      return true; // Skip gate; data loads from localStorage cache via sbLoad fallback
+      setSyncState(true);
+      return true;
     }
   } catch(e) {}
+
+  document.getElementById('gate').style.display = 'flex';
   document.getElementById('gate-email').focus();
   return false;
 }
@@ -1525,6 +1581,77 @@ function updateLocationSuggestions(){
   dl.innerHTML=suggestions.map(loc=>`<option value="${loc.replace(/"/g,'&quot;')}"></option>`).join('');
 }
 
+// ── Saved-locations manager ───────────────────────────────────────────────────
+// Lets you rename or remove entries in knownLocations from the Reference tab. Because
+// saveData() re-harvests locations from the entries themselves, a rename/delete must also
+// touch matching entries — otherwise the old name just reappears on the next save.
+let locEditing=null;
+function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function renderLocationManager(){
+  const host=document.getElementById('location-manager');
+  if(!host)return;
+  const locs=[...knownLocations].sort((a,b)=>a.localeCompare(b));
+  if(!locs.length){host.innerHTML='<p class="loc-empty">No saved locations yet — they\u2019re remembered automatically as you log expenses.</p>';return;}
+  host.innerHTML=locs.map(loc=>{
+    const esc=escHtml(loc);
+    if(loc===locEditing){
+      return`<div class="loc-row"><input class="loc-edit" type="text" value="${esc}" data-loc="${esc}"><span class="loc-actions"><button class="loc-btn loc-save" data-act="save" data-loc="${esc}" title="Save">\u2713</button><button class="loc-btn" data-act="cancel" title="Cancel">\u2715</button></span></div>`;
+    }
+    return`<div class="loc-row"><span class="loc-name" title="${esc}">${esc}</span><span class="loc-actions"><button class="loc-btn" data-act="rename" data-loc="${esc}" title="Rename">\u270e</button><button class="loc-btn loc-del" data-act="delete" data-loc="${esc}" title="Delete">\u00d7</button></span></div>`;
+  }).join('');
+  const ed=host.querySelector('.loc-edit');
+  if(ed){
+    ed.focus();
+    ed.setSelectionRange(ed.value.length,ed.value.length);
+    ed.addEventListener('keydown',ev=>{
+      if(ev.key==='Enter'){ev.preventDefault();commitRename(locEditing,ed.value);}
+      else if(ev.key==='Escape'){locEditing=null;renderLocationManager();}
+    });
+  }
+}
+function onLocManagerClick(e){
+  const btn=e.target.closest('button[data-act]');
+  if(!btn)return;
+  const act=btn.getAttribute('data-act');
+  if(act==='rename'){locEditing=btn.getAttribute('data-loc');renderLocationManager();}
+  else if(act==='cancel'){locEditing=null;renderLocationManager();}
+  else if(act==='save'){const row=btn.closest('.loc-row');const inp=row&&row.querySelector('.loc-edit');commitRename(btn.getAttribute('data-loc'),inp?inp.value:'');}
+  else if(act==='delete'){deleteLocation(btn.getAttribute('data-loc'));}
+}
+async function commitRename(oldLoc,newRaw){
+  const newLoc=(newRaw||'').trim();
+  locEditing=null;
+  if(!newLoc||newLoc===oldLoc){renderLocationManager();return;}
+  const n=expenses.filter(e=>e.location===oldLoc).length;
+  if(n>0){
+    const ok=await showConfirm(`Rename "${oldLoc}" to "${newLoc}" across ${n} ${n===1?'entry':'entries'} that use it?`,'Rename');
+    if(!ok){renderLocationManager();return;}
+    expenses.forEach(e=>{if(e.location===oldLoc)e.location=newLoc;});
+  }
+  knownLocations=knownLocations.filter(l=>l!==oldLoc);
+  if(!knownLocations.includes(newLoc))knownLocations.push(newLoc);
+  knownLocations.sort();
+  saveData();
+  updateLocationSuggestions();
+  renderLocationManager();
+  renderLog();
+  showToast(n>0?`Renamed across ${n} ${n===1?'entry':'entries'}.`:'Location renamed.');
+}
+async function deleteLocation(loc){
+  const n=expenses.filter(e=>e.location===loc).length;
+  if(n>0){
+    const ok=await showConfirm(`Remove "${loc}" and clear it from ${n} ${n===1?'entry':'entries'} that use it?`,'Remove');
+    if(!ok)return;
+    expenses.forEach(e=>{if(e.location===loc)e.location='';});
+  }
+  knownLocations=knownLocations.filter(l=>l!==loc);
+  saveData();
+  updateLocationSuggestions();
+  renderLocationManager();
+  if(n>0)renderLog();
+  showToast(n>0?`Removed from ${n} ${n===1?'entry':'entries'}.`:'Location removed.');
+}
+
 async function loadData(){
   const logEl = document.getElementById('log');
   if(logEl) logEl.innerHTML = '<div style="text-align:center;padding:2rem;color:#888">Loading…</div>';
@@ -1577,6 +1704,7 @@ async function loadData(){
   renderLog();
   updateIndulgenceOptions();
   updateLocationSuggestions();
+  renderLocationManager();
 }
 async function saveData(){
   expenses=renumberIndulgences(expenses);
@@ -1588,6 +1716,7 @@ async function saveData(){
   await sbSave(expenses);
   try{localStorage.setItem(STORAGE_KEY,JSON.stringify({entries:expenses,locations:knownLocations}));}catch(e){}
   updateLocationSuggestions();
+  if(locEditing===null)renderLocationManager();
 }
 
 function isDealRedemption(e){
@@ -2287,7 +2416,7 @@ function submitExpense(){
     clearForm();switchTab('log');showToast('Entry updated!');
   }else{
     const e=readForm(null);if(!e)return;
-    expenses.unshift(e);saveData();clearForm();switchTab('log');showToast('Expense added!');
+    expenses.unshift(e);saveData();clearForm();clearDraft();switchTab('log');showToast('Expense added!');
   }
 }
 
@@ -2324,6 +2453,67 @@ function clearForm(){
   if(editingId===null){document.getElementById('edit-banner').classList.remove('visible');document.getElementById('submit-btn').textContent='Add expense';}
   updateIndulgenceOptions();
 }
+
+// ── Uncommitted Add-Expense draft persistence ─────────────────────────────────
+// Snapshots the Add form to localStorage on every change so a half-entered expense survives
+// a reload or app switch (mobile + desktop). NEW entries only — never while editing an
+// existing entry. Cleared on a committed Add or an explicit Clear.
+const DRAFT_KEY='expense_draft_v1';
+const DRAFT_TEXT_FIELDS=['f-desc','f-full','f-location','f-recipient','f-splitamount','f-splitwith','f-splitvia','f-savingsdetails','f-savingstype','f-plannedtime','f-planneddate','f-actualdate','f-datelogged','f-date','f-instance','f-category','f-status','f-indulgencetag','f-paid'];
+const DRAFT_CHECK_FIELDS=['f-hastime','f-greenlit','f-hassplit','f-hassavings'];
+let restoringDraft=false,draftTimer=null;
+function draftHasContent(d){
+  return !!(d&&(d['f-desc']||d['f-full']||d['f-location']||d['f-instance']||d['f-category']||(d['f-recipient']&&d['f-recipient']!=='@')||d['f-splitamount']||d['f-savingsdetails']||d['f-planneddate']||d['f-plannedtime']));
+}
+function saveDraft(){
+  if(restoringDraft||editingId!==null)return;
+  const d={};
+  DRAFT_TEXT_FIELDS.forEach(id=>{const el=document.getElementById(id);if(el)d[id]=el.value;});
+  DRAFT_CHECK_FIELDS.forEach(id=>{const el=document.getElementById(id);if(el)d[id]=el.checked;});
+  const r=document.querySelector('input[name="split-dir"]:checked');d['split-dir']=r?r.value:'';
+  try{
+    if(draftHasContent(d))localStorage.setItem(DRAFT_KEY,JSON.stringify(d));
+    else localStorage.removeItem(DRAFT_KEY);
+  }catch(e){}
+}
+function saveDraftDebounced(){clearTimeout(draftTimer);draftTimer=setTimeout(saveDraft,200);}
+function clearDraft(){try{localStorage.removeItem(DRAFT_KEY);}catch(e){}}
+function restoreDraft(){
+  if(editingId!==null)return;
+  let d;try{d=JSON.parse(localStorage.getItem(DRAFT_KEY)||'null');}catch(e){d=null;}
+  if(!d||!draftHasContent(d))return;
+  restoringDraft=true;
+  try{
+    const sv=(id,v)=>{const el=document.getElementById(id);if(el&&v!=null)el.value=v;};
+    const sc=(id,v)=>{const el=document.getElementById(id);if(el)el.checked=!!v;};
+    // Instance first — it builds the conditional blocks the rest of the fields live in.
+    sv('f-instance',d['f-instance']);onInstanceChange(false);
+    sv('f-category',d['f-category']);
+    // Planning fields (set values, then fire status without popping the executed-date modal).
+    sv('f-datelogged',d['f-datelogged']);sv('f-planneddate',d['f-planneddate']);sv('f-actualdate',d['f-actualdate']);
+    sv('f-status',d['f-status']);onStatusChange(true);
+    prevStatus=document.getElementById('f-status').value;
+    sc('f-hastime',d['f-hastime']);onHasTimeChange();sv('f-plannedtime',d['f-plannedtime']);
+    sv('f-indulgencetag',d['f-indulgencetag']);onSecondaryTagChange();
+    sc('f-greenlit',d['f-greenlit']);onGreenlitChange();
+    // Split
+    sc('f-hassplit',d['f-hassplit']);toggleSplit();
+    if(d['split-dir']){const rb=document.getElementById(d['split-dir']==='received'?'f-splitdir-received':'f-splitdir-paid');if(rb)rb.checked=true;updateSplitLabel();}
+    sv('f-splitamount',d['f-splitamount']);sv('f-splitwith',d['f-splitwith']);sv('f-splitvia',d['f-splitvia']);
+    // Savings
+    sc('f-hassavings',d['f-hassavings']);toggleSavings();
+    sv('f-savingstype',d['f-savingstype']);sv('f-savingsdetails',d['f-savingsdetails']);sv('f-paid',d['f-paid']);
+    // Core text
+    sv('f-desc',d['f-desc']);sv('f-full',d['f-full']);sv('f-location',d['f-location']);sv('f-recipient',d['f-recipient']);sv('f-date',d['f-date']);
+    if(d['f-hassplit']||d['f-hassavings']||(d['f-recipient']&&d['f-recipient']!=='@'))setExtrasExpanded(true);
+    calcSavings();updateDateDisplay();
+  }catch(e){}
+  restoringDraft=false;
+  try{if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();}catch(e){}
+  showToast('Restored unsaved draft');
+}
+// Discard the draft only when a NEW-entry form is explicitly cleared (not during an edit).
+function onClearClick(){const wasEditing=editingId!==null;clearForm();if(!wasEditing)clearDraft();}
 
 function getWeekMonday(iso){
   if(!iso)return null;
@@ -2758,6 +2948,7 @@ function duplicateEntry(id){
   document.getElementById('f-location').value=src.location||'';
   document.getElementById('f-date').value=today;
   updateDateDisplay();
+  saveDraft();                          // persist the prefilled duplicate as a new-entry draft
   showToast('Duplicated as a new expense — review and save.');
   // Pulse + scroll the description into view, mirroring the edit affordance.
   setTimeout(()=>{
@@ -2772,8 +2963,10 @@ function duplicateEntry(id){
 
 // ── Custom confirm modal ───────────────────────────────────────────────────
 let confirmResolve=null;
-function showConfirm(msg){
+function showConfirm(msg,okLabel){
   document.getElementById('confirm-msg').textContent=msg;
+  const okBtn=document.getElementById('confirm-ok');
+  if(okBtn)okBtn.textContent=okLabel||'Delete';
   const modal=document.getElementById('confirm-modal');
   modal.style.display='flex';
   return new Promise(res=>{confirmResolve=res;});
@@ -3070,8 +3263,18 @@ document.getElementById('f-date').addEventListener('change',function(){
 updateDateDisplay();
 document.getElementById('f-datelogged').value=today;
 loadSummarySectionStates();
-// Skip gate if already authenticated or within 72h; otherwise wait for gateSubmit().
-gateCheck().then(ok => { if (ok) loadData(); });
+// Persist uncommitted Add-Expense fields: snapshot on any input/change within the Add tab.
+const _addTab=document.getElementById('tab-add');
+if(_addTab){_addTab.addEventListener('input',saveDraftDebounced);_addTab.addEventListener('change',saveDraftDebounced);}
+// Flush immediately when the app is backgrounded — iOS may kill the tab before the debounce.
+window.addEventListener('pagehide',saveDraft);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')saveDraft();});
+// Saved-locations manager: one delegated click handler survives innerHTML rebuilds.
+const _locMgr=document.getElementById('location-manager');
+if(_locMgr)_locMgr.addEventListener('click',onLocManagerClick);
+renderLocationManager();
+// Skip gate if opened within 72h (checked synchronously) or a live session exists.
+gateCheck().then(ok => { if (ok) { loadData(); restoreDraft(); } }).catch(() => {});
 </script>
 </body>
 </html>
