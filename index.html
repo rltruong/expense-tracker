@@ -53,6 +53,11 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
 .loc-del:hover{background:#fdecec;border-color:#f0b8b8;color:#c0392b}
 .loc-save{color:#1d7a4d;border-color:#bfe0cc}
 .loc-empty{color:#888;font-size:13px;margin:0}
+/* Discover cashback quarterly table (Reference tab) */
+.disc-table{width:100%;border-collapse:collapse;margin-top:8px}
+.disc-table th{text-align:left;font-weight:600;font-size:13px;color:#555;padding:6px 10px 6px 2px;white-space:nowrap;vertical-align:middle;width:1%}
+.disc-table td{padding:4px 0}
+.disc-table input{width:100%;font-size:13px;padding:6px 8px;border:1px solid #ccc;border-radius:6px;font-family:inherit;color:#1a1a1a;box-sizing:border-box}
 .journal-check{font-size:12px;color:#888;display:inline-flex;align-items:center;gap:4px;cursor:pointer;user-select:none;font-weight:normal;text-transform:none;letter-spacing:0;flex-shrink:0;white-space:nowrap;line-height:1.4}
 .journal-check input{margin:0;width:auto;cursor:pointer;flex-shrink:0}
 .expense-item.dragging{opacity:0.4;box-shadow:none}
@@ -318,7 +323,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
     </div>
     <div class="form-group">
       <label id="full-price-label">Full price ($)</label>
-      <input type="number" id="f-full" placeholder="0.00" min="0" step="0.01" style="-moz-appearance:textfield;appearance:textfield" oninput="calcSavings()" onblur="fmtField(this)">
+      <input type="text" inputmode="decimal" id="f-full" placeholder="0.00" style="-moz-appearance:textfield;appearance:textfield" oninput="calcSavings()" onkeydown="onAmountKey(event,this)" onblur="fmtField(this)">
       <span id="full-price-hint" style="display:none;font-size:11px;color:#999;margin-top:2px">Optional — can be filled in later</span>
     </div>
     <div class="form-group">
@@ -373,7 +378,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
           </div>
           <div class="form-group">
             <label id="split-amount-label">Your share ($)</label>
-            <input type="number" id="f-splitamount" placeholder="0.00" min="0" step="0.01" onblur="fmtField(this)">
+            <input type="text" inputmode="decimal" id="f-splitamount" placeholder="0.00" onkeydown="onAmountKey(event,this)" onblur="fmtField(this)">
           </div>
           <div class="form-group">
             <label>Via</label>
@@ -398,7 +403,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
   <div class="block" id="savings-block" style="display:none">
     <div class="block-label">Savings details</div>
     <div class="form-grid">
-      <div class="form-group"><label>Amount paid ($)</label><input type="number" id="f-paid" placeholder="0.00" min="0" step="0.01" oninput="calcSavings()" onblur="fmtField(this)"></div>
+      <div class="form-group"><label>Amount paid ($)</label><input type="text" inputmode="decimal" id="f-paid" placeholder="0.00" oninput="calcSavings()" onkeydown="onAmountKey(event,this)" onblur="fmtField(this)"></div>
       <div class="form-group"><label>You saved ($)</label><input type="number" id="f-saved" placeholder="auto-calculated" style="background:#eee" readonly></div>
       <div class="form-group full"><label>Savings type</label>
         <select id="f-savingstype">
@@ -543,8 +548,101 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
     <input type="search" id="ref-search-input" placeholder="Search reference…" oninput="onRefSearch()">
   </div>
   <div id="ref-content">
+    <div class="ref-section" data-keywords="bounty greenlit immutable date logged tier cap floor planned">
+      <div class="ref-head" onclick="toggleRefSection(this)"><span>Bounty rules 🎯</span><span class="chev">▶</span></div>
+      <div class="ref-body">
+        <p><strong>Global cap: 1 open entry per tier.</strong> If you have an open Bounty anywhere in your log, the Bounty option is hidden from the Instance dropdown until you resolve it.</p>
+        <p><strong>Full price floors:</strong> Bounty ≥ $50, Big bounty ≥ $100, Mega bounty ≥ $250.</p>
+        <p><strong>Date Logged is immutable on edit.</strong> Once saved, the readonly field can't be changed. Delete and recreate if needed.</p>
+        <p><strong>Planned date:</strong> forward-only, unrestricted future. Any date today or later.</p>
+        <p><strong>Greenlit gate:</strong> a checkbox between In Progress and Executed. Use it to mark "I've decided this will happen" without yet executing.</p>
+        <p><strong>Roll-forward:</strong> open bounties display under the 1st of the current month in By date logged sort, and their recorded checkbox resets at month boundaries.</p>
+      </div>
+    </div>
+    <div class="ref-section" data-keywords="category food vehicle transportation miscellaneous home housing health medical personal care clothing utilities color badge">
+      <div class="ref-head" onclick="toggleRefSection(this)"><span>Categories 🗂️</span><span class="chev">▶</span></div>
+      <div class="ref-body">
+        <p>Each entry has one category. Color emojis appear at the end of dropdown options so keyboard search works (typing "F" jumps to Food).</p>
+        <p>
+          <span class="swatch" style="background:#FFA723;color:#5C3300">Food</span>
+          <span class="swatch" style="background:#FFC12A;color:#6B4D00">Vehicle and Transportation</span>
+          <span class="swatch" style="background:#68CDC4;color:#1A5E59">Miscellaneous</span>
+          <span class="swatch" style="background:#DB3129;color:#fff">Home and Housing</span>
+          <span class="swatch" style="background:#F4A0BC;color:#7A2138">Health, Medical, and Personal Care</span>
+          <span class="swatch" style="background:#A89BC4;color:#2E1A5E">Clothing</span>
+          <span class="swatch" style="background:#C73B92;color:#fff">Utilities</span>
+        </p>
+      </div>
+    </div>
+    <div class="ref-section" data-keywords="date restriction grace window month editing relaxed past">
+      <div class="ref-head" onclick="toggleRefSection(this)"><span>Date restrictions 📅</span><span class="chev">▶</span></div>
+      <div class="ref-body">
+        <p><strong>New non-planning entries:</strong> current calendar month, plus a 7-day grace back into the previous month at the start of each month.</p>
+        <p><strong>New Planned expense planned date:</strong> today through unrestricted future.</p>
+        <p><strong>New Bounty Date Logged:</strong> current month + 7-day grace. Planned date: today through unrestricted future.</p>
+        <p><strong>Editing existing entries:</strong> picker relaxes to the first day of the month containing the entry's earliest existing date. Bounty Date Logged stays locked.</p>
+        <p>Retroactive warning fires for dates more than 7 days back (overridable).</p>
+      </div>
+    </div>
+    <div class="ref-section" data-keywords="description italics asterisk at tagging person name people split recipient">
+      <div class="ref-head" onclick="toggleRefSection(this)"><span>Description conventions ✍️</span><span class="chev">▶</span></div>
+      <div class="ref-body">
+        <p><strong>Italics:</strong> wrap text in asterisks. <code>*emphasized*</code> renders italicized.</p>
+        <p><strong>Person tagging:</strong> <code>@name</code> auto-capitalizes and colors blue. One token only (no spaces). Works in Description, Split with, and Recipient notes.</p>
+        <p><strong>Recipient field:</strong> single-line input. For multiple recipients use <code>@alex, @jordan</code> or natural separators like <code>@alex and @jordan</code>.</p>
+      </div>
+    </div>
+    <div class="ref-section" data-keywords="discover 🟠 cashback 5% quarterly rotating categories calendar bonus card">
+      <div class="ref-head" onclick="toggleRefSection(this)"><span>Discover 🟠 Cashback Categories</span><span class="chev">▶</span></div>
+      <div class="ref-body">
+        <p>Discover's 5% Cashback Calendar rotates categories each quarter (up to the quarterly max, then 1%). Enter each quarter's categories as Discover announces them — the fields clear automatically at the start of each new year.</p>
+        <table class="disc-table"><tbody>
+          <tr><th>Jan – Mar</th><td><input type="text" id="disc-q1" placeholder="e.g. Grocery stores, Restaurants" onchange="updateDiscover()"></td></tr>
+          <tr><th>Apr – Jun</th><td><input type="text" id="disc-q2" placeholder="not yet announced" onchange="updateDiscover()"></td></tr>
+          <tr><th>Jul – Sep</th><td><input type="text" id="disc-q3" placeholder="not yet announced" onchange="updateDiscover()"></td></tr>
+          <tr><th>Oct – Dec</th><td><input type="text" id="disc-q4" placeholder="not yet announced" onchange="updateDiscover()"></td></tr>
+        </tbody></table>
+      </div>
+    </div>
+    <div class="ref-section" data-keywords="expense log search filter reset instance category status drill down query find narrow sort duplicate copy clone repeat new entry button">
+      <div class="ref-head" onclick="toggleRefSection(this)"><span>Expense log — search &amp; filters 🔎</span><span class="chev">▶</span></div>
+      <div class="ref-body">
+        <p><strong>Search box:</strong> a global query across each entry's description, location, category, instance and status labels, savings type/details, recipient note, split details, and amounts. Multiple words are AND-matched (all must appear).</p>
+        <p><strong>Filters take priority:</strong> the Instance / Category / Status dropdowns decide what's on screen first; the search box only drills down within that subset. So filtering to "Food" and then searching narrows to Food entries that also match the query — search never widens past the filters.</p>
+        <p><strong>Reset filters</strong> clears the search box and all three dropdowns at once. It leaves the sort mode alone, since sort is a view preference rather than a filter.</p>
+        <p><strong>Duplicate (⧉):</strong> opens a pre-filled <em>Add expense</em> draft from any card — copying description, full price, category, and location as a brand-new <strong>Expense</strong>. The instance, status, discount, split, recipient, tags, and dates are all reset (date defaults to today), and nothing is saved until you press Add, so you can tweak first or cancel. Handy for repeat purchases of the same thing.</p>
+      </div>
+    </div>
+    <div class="ref-section" data-keywords="flag flagged 🚩 incomplete missing info review reviewed red highlight slash command edit fix">
+      <div class="ref-head" onclick="toggleRefSection(this)"><span>Flagging incomplete entries 🚩</span><span class="chev">▶</span></div>
+      <div class="ref-body">
+        <p>When you log something in a hurry and know it's missing details, drop a <strong>🚩</strong> in the description so you remember to come back and finish it.</p>
+        <ul>
+          <li><strong>Adding the flag:</strong> type <code>/flag</code> anywhere in the description and it becomes 🚩 inline (works while creating <em>and</em> while editing). You can also just type or paste the 🚩 emoji directly.</li>
+          <li><strong>What it does:</strong> any entry whose description contains 🚩 turns <span style="background:#FDEEEB;border:1px solid #FA9F8C;padding:1px 6px;border-radius:3px">light red</span> in the Expense Log — an at-a-glance "fix me" signal.</li>
+          <li><strong>Clearing it:</strong> a <strong>Reviewed?</strong> checkbox appears at the bottom-left of a flagged card. Ticking it removes the 🚩, restores the normal background, and the Reviewed control disappears. (You can also clear it by editing the entry and deleting the 🚩 yourself.)</li>
+          <li><strong>Transcription gate:</strong> while an entry is flagged, its journal/Transcribe checkbox is <strong>disabled</strong> — you can't mark it transcribed until the flag is cleared. This keeps incomplete entries out of the planner.</li>
+        </ul>
+        <p>Flagged entries never count as recorded, and the 🚩 is just text in the description — it has no effect on amounts, categories, or summaries.</p>
+      </div>
+    </div>
+    <div class="ref-section" data-keywords="indulgence pool slot monthly weekly cap rollover sticker reading 2 consumption">
+      <div class="ref-head" onclick="toggleRefSection(this)"><span>Indulgence rules 🍬</span><span class="chev">▶</span></div>
+      <div class="ref-body">
+        <p><strong>5 slots per calendar month.</strong> Slots reset on the 1st. Slots numbered 1–5 sequentially in chronological order.</p>
+        <p><strong>Weekly cap:</strong> 2 per Monday–Sunday week, except the final week of the month (no cap).</p>
+        <p><strong>Pool keying (consumption-based):</strong> an indulgence belongs to the month it actually happens (or is scheduled to happen), not when it was committed:</p>
+        <ul>
+          <li>Standalone indulgence: month of <code>e.date</code></li>
+          <li>Planned + indulgence-tagged, Executed: month of <code>actualDate</code></li>
+          <li>Planned + indulgence-tagged, any other status: month of <code>plannedDate</code></li>
+        </ul>
+        <p><strong>Cap-aware edits:</strong> moving an indulgence into a month that already has 5 is blocked with a toast.</p>
+        <p><strong>Dropdown behavior:</strong> only one slot offered at a time (the next sequential one). You can't skip ahead.</p>
+      </div>
+    </div>
     <div class="ref-section" data-keywords="instance type expense subscription gift indulgence planned bounty deal redemption">
-      <div class="ref-head" onclick="toggleRefSection(this)"><span>Instance types</span><span class="chev">▶</span></div>
+      <div class="ref-head" onclick="toggleRefSection(this)"><span>Instance types 🏷️</span><span class="chev">▶</span></div>
       <div class="ref-body">
         <p>Each entry has one primary instance. Plan-related instances additionally have status, planned date, and optional actual execution date.</p>
         <table>
@@ -561,123 +659,8 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
         </table>
       </div>
     </div>
-
-    <div class="ref-section" data-keywords="category food vehicle transportation miscellaneous home housing health medical personal care clothing utilities color badge">
-      <div class="ref-head" onclick="toggleRefSection(this)"><span>Categories</span><span class="chev">▶</span></div>
-      <div class="ref-body">
-        <p>Each entry has one category. Color emojis appear at the end of dropdown options so keyboard search works (typing "F" jumps to Food).</p>
-        <p>
-          <span class="swatch" style="background:#FFA723;color:#5C3300">Food</span>
-          <span class="swatch" style="background:#FFC12A;color:#6B4D00">Vehicle and Transportation</span>
-          <span class="swatch" style="background:#68CDC4;color:#1A5E59">Miscellaneous</span>
-          <span class="swatch" style="background:#DB3129;color:#fff">Home and Housing</span>
-          <span class="swatch" style="background:#F4A0BC;color:#7A2138">Health, Medical, and Personal Care</span>
-          <span class="swatch" style="background:#A89BC4;color:#2E1A5E">Clothing</span>
-          <span class="swatch" style="background:#C73B92;color:#fff">Utilities</span>
-        </p>
-      </div>
-    </div>
-
-    <div class="ref-section" data-keywords="indulgence pool slot monthly weekly cap rollover sticker reading 2 consumption">
-      <div class="ref-head" onclick="toggleRefSection(this)"><span>Indulgence rules</span><span class="chev">▶</span></div>
-      <div class="ref-body">
-        <p><strong>5 slots per calendar month.</strong> Slots reset on the 1st. Slots numbered 1–5 sequentially in chronological order.</p>
-        <p><strong>Weekly cap:</strong> 2 per Monday–Sunday week, except the final week of the month (no cap).</p>
-        <p><strong>Pool keying (consumption-based):</strong> an indulgence belongs to the month it actually happens (or is scheduled to happen), not when it was committed:</p>
-        <ul>
-          <li>Standalone indulgence: month of <code>e.date</code></li>
-          <li>Planned + indulgence-tagged, Executed: month of <code>actualDate</code></li>
-          <li>Planned + indulgence-tagged, any other status: month of <code>plannedDate</code></li>
-        </ul>
-        <p><strong>Cap-aware edits:</strong> moving an indulgence into a month that already has 5 is blocked with a toast.</p>
-        <p><strong>Dropdown behavior:</strong> only one slot offered at a time (the next sequential one). You can't skip ahead.</p>
-      </div>
-    </div>
-
-    <div class="ref-section" data-keywords="bounty greenlit immutable date logged tier cap floor planned">
-      <div class="ref-head" onclick="toggleRefSection(this)"><span>Bounty rules</span><span class="chev">▶</span></div>
-      <div class="ref-body">
-        <p><strong>Global cap: 1 open entry per tier.</strong> If you have an open Bounty anywhere in your log, the Bounty option is hidden from the Instance dropdown until you resolve it.</p>
-        <p><strong>Full price floors:</strong> Bounty ≥ $50, Big bounty ≥ $100, Mega bounty ≥ $250.</p>
-        <p><strong>Date Logged is immutable on edit.</strong> Once saved, the readonly field can't be changed. Delete and recreate if needed.</p>
-        <p><strong>Planned date:</strong> forward-only, unrestricted future. Any date today or later.</p>
-        <p><strong>Greenlit gate:</strong> a checkbox between In Progress and Executed. Use it to mark "I've decided this will happen" without yet executing.</p>
-        <p><strong>Roll-forward:</strong> open bounties display under the 1st of the current month in By date logged sort, and their recorded checkbox resets at month boundaries.</p>
-      </div>
-    </div>
-
-    <div class="ref-section" data-keywords="planning planned date logged actual execution status executed in progress canceled gate">
-      <div class="ref-head" onclick="toggleRefSection(this)"><span>Planning fields</span><span class="chev">▶</span></div>
-      <div class="ref-body">
-        <p><strong>Date logged:</strong> when you committed to the plan. For new entries: current month + 7-day grace into prior month. Locked on edit for bounties.</p>
-        <p><strong>Status:</strong> In Progress / Executed / Canceled (+ Greenlit for bounties).</p>
-        <p><strong>Planned date of execution:</strong> required. For Planned expense and Bounty, forward-only-unrestricted.</p>
-        <p><strong>Actual date of execution:</strong> hidden until Status = Executed. Modal pops up to confirm. Defaults to planned date if planned date is today or earlier, else today. Cleared from storage if Status reverts.</p>
-        <p><strong>Secondary tag</strong> (Planned expense only): None / Gift / Indulgence N.</p>
-      </div>
-    </div>
-
-    <div class="ref-section" data-keywords="slash command gas sonic trak narwhal allstate icloud autofill">
-      <div class="ref-head" onclick="toggleRefSection(this)"><span>Slash commands</span><span class="chev">▶</span></div>
-      <div class="ref-body">
-        <p>Type the slash command as the entire description. Fills in description, price, category, location, and (for some) date.</p>
-        <table>
-          <tr><th>Command</th><th>Description</th><th>Price</th><th>Date</th></tr>
-          <tr><td><code>/gas</code></td><td>Gasoline ⛽</td><td>—</td><td>—</td></tr>
-          <tr><td><code>/sonic</code></td><td>Sonic Fiber 10 Gbps Standard 🛜</td><td>$59.99</td><td>10th</td></tr>
-          <tr><td><code>/trak</code></td><td>FasTrak Toll Tag Replenishment 🚕</td><td>—</td><td>—</td></tr>
-          <tr><td><code>/narwhal</code></td><td>Narwhal Pro 🐳</td><td>$3.99</td><td>15th</td></tr>
-          <tr><td><code>/allstate</code></td><td>Allstate Auto Insurance 🤲🏻</td><td>$171.00</td><td>8th</td></tr>
-          <tr><td><code>/icloud</code></td><td>iCloud+ with 50 GB ☁️</td><td>$0.99</td><td>1st</td></tr>
-          <tr><td><code>/claude</code></td><td>Claude Pro 🤖</td><td>$20.00</td><td>20th</td></tr>
-        </table>
-        <p><strong>Savings shortcuts:</strong> <code>/dsc</code> → 🟠 Discover Cashback, <code>/chs</code> → 🔷 Chase Ultimate Reward, <code>/ven</code> → ✌🏻 Venmo Balance.</p>
-        <p><strong>Inline flag:</strong> <code>/flag</code> expands to 🚩 anywhere in the description (not just as the whole field) to mark an entry as incomplete. See <em>Flagging incomplete entries</em> below.</p>
-        <p><strong>Delta calculation in Savings Details</strong> — both directions trigger on a trailing space:</p>
-        <ul>
-          <li><strong>Forward</strong> <code>$X.XX /delta</code> + space → <code>$X.XX Δ $Y.YY</code>, where Y.YY = X.XX minus the amount paid (or full price if paid is 0/empty). Reads as "balance went from X to Y." Useful for the remaining gift card / store credit balance after an expense.</li>
-          <li><strong>Backward</strong> <code>/delta $Y.YY</code> + space → <code>$X.XX /delta $Y.YY</code>, where X.XX = Y.YY plus the <em>amount paid</em> (fallback: full price). True inverse of forward: since forward subtracts paid to find the remaining balance, backward adds paid back to recover the original. Only fires when amount paid (or full price) is set.</li>
-        </ul>
-        <p><strong>Keyword autofill:</strong> typing certain keywords anywhere in the description sets Instance + Category. "gasoline" → Expense + Vehicle. "sonic fiber" → Subscription + Utilities. "fastrak" → Expense + Vehicle.</p>
-      </div>
-    </div>
-
-    <div class="ref-section" data-keywords="description italics asterisk at tagging person name people split recipient">
-      <div class="ref-head" onclick="toggleRefSection(this)"><span>Description conventions</span><span class="chev">▶</span></div>
-      <div class="ref-body">
-        <p><strong>Italics:</strong> wrap text in asterisks. <code>*emphasized*</code> renders italicized.</p>
-        <p><strong>Person tagging:</strong> <code>@name</code> auto-capitalizes and colors blue. One token only (no spaces). Works in Description, Split with, and Recipient notes.</p>
-        <p><strong>Recipient field:</strong> single-line input. For multiple recipients use <code>@alex, @jordan</code> or natural separators like <code>@alex and @jordan</code>.</p>
-      </div>
-    </div>
-
-    <div class="ref-section" data-keywords="date restriction grace window month editing relaxed past">
-      <div class="ref-head" onclick="toggleRefSection(this)"><span>Date restrictions</span><span class="chev">▶</span></div>
-      <div class="ref-body">
-        <p><strong>New non-planning entries:</strong> current calendar month, plus a 7-day grace back into the previous month at the start of each month.</p>
-        <p><strong>New Planned expense planned date:</strong> today through unrestricted future.</p>
-        <p><strong>New Bounty Date Logged:</strong> current month + 7-day grace. Planned date: today through unrestricted future.</p>
-        <p><strong>Editing existing entries:</strong> picker relaxes to the first day of the month containing the entry's earliest existing date. Bounty Date Logged stays locked.</p>
-        <p>Retroactive warning fires for dates more than 7 days back (overridable).</p>
-      </div>
-    </div>
-
-    <div class="ref-section" data-keywords="flag flagged 🚩 incomplete missing info review reviewed red highlight slash command edit fix">
-      <div class="ref-head" onclick="toggleRefSection(this)"><span>Flagging incomplete entries 🚩</span><span class="chev">▶</span></div>
-      <div class="ref-body">
-        <p>When you log something in a hurry and know it's missing details, drop a <strong>🚩</strong> in the description so you remember to come back and finish it.</p>
-        <ul>
-          <li><strong>Adding the flag:</strong> type <code>/flag</code> anywhere in the description and it becomes 🚩 inline (works while creating <em>and</em> while editing). You can also just type or paste the 🚩 emoji directly.</li>
-          <li><strong>What it does:</strong> any entry whose description contains 🚩 turns <span style="background:#FDEEEB;border:1px solid #FA9F8C;padding:1px 6px;border-radius:3px">light red</span> in the Expense Log — an at-a-glance "fix me" signal.</li>
-          <li><strong>Clearing it:</strong> a <strong>Reviewed?</strong> checkbox appears at the bottom-left of a flagged card. Ticking it removes the 🚩, restores the normal background, and the Reviewed control disappears. (You can also clear it by editing the entry and deleting the 🚩 yourself.)</li>
-          <li><strong>Transcription gate:</strong> while an entry is flagged, its journal/Transcribe checkbox is <strong>disabled</strong> — you can't mark it transcribed until the flag is cleared. This keeps incomplete entries out of the planner.</li>
-        </ul>
-        <p>Flagged entries never count as recorded, and the 🚩 is just text in the description — it has no effect on amounts, categories, or summaries.</p>
-      </div>
-    </div>
-
     <div class="ref-section" data-keywords="journal page hint checkbox recorded transcription hobonichi sticker bounty indulgence placement hourglass checkmark memo">
-      <div class="ref-head" onclick="toggleRefSection(this)"><span>Journal page hints</span><span class="chev">▶</span></div>
+      <div class="ref-head" onclick="toggleRefSection(this)"><span>Journal page hints 📓</span><span class="chev">▶</span></div>
       <div class="ref-body">
         <p><strong>Everything is transcribed on the memo side</strong> of the Hobonichi Weeks spread. The checkbox tracks whether an entry has been transcribed yet.</p>
         <p><strong>Page hints:</strong></p>
@@ -704,19 +687,61 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
         </ul>
       </div>
     </div>
-
-    <div class="ref-section" data-keywords="expense log search filter reset instance category status drill down query find narrow sort duplicate copy clone repeat new entry button">
-      <div class="ref-head" onclick="toggleRefSection(this)"><span>Expense log — search &amp; filters</span><span class="chev">▶</span></div>
+    <div class="ref-section" data-keywords="manage saved locations edit rename delete remove vendor url datalist suggestions cleanup typo">
+      <div class="ref-head" onclick="toggleRefSection(this)"><span>Manage saved locations 📍</span><span class="chev">▶</span></div>
       <div class="ref-body">
-        <p><strong>Search box:</strong> a global query across each entry's description, location, category, instance and status labels, savings type/details, recipient note, split details, and amounts. Multiple words are AND-matched (all must appear).</p>
-        <p><strong>Filters take priority:</strong> the Instance / Category / Status dropdowns decide what's on screen first; the search box only drills down within that subset. So filtering to "Food" and then searching narrows to Food entries that also match the query — search never widens past the filters.</p>
-        <p><strong>Reset filters</strong> clears the search box and all three dropdowns at once. It leaves the sort mode alone, since sort is a view preference rather than a filter.</p>
-        <p><strong>Duplicate (⧉):</strong> opens a pre-filled <em>Add expense</em> draft from any card — copying description, full price, category, and location as a brand-new <strong>Expense</strong>. The instance, status, discount, split, recipient, tags, and dates are all reset (date defaults to today), and nothing is saved until you press Add, so you can tweak first or cancel. Handy for repeat purchases of the same thing.</p>
+        <p>Every location you type is remembered and offered as a suggestion in the Location field. Fix a typo with rename, or remove ones you no longer want.</p>
+        <ul>
+          <li><strong>Rename (✎):</strong> if existing entries use the old name, you'll confirm a count — the new name is then written to those entries too, so the fix propagates everywhere.</li>
+          <li><strong>Remove (×):</strong> deletes the suggestion. If entries still use it, you'll confirm and it's also cleared from those entries (otherwise it would reappear on the next save, since suggestions are re-harvested from your entries). A location used by no entries is removed without a prompt.</li>
+        </ul>
+        <div id="location-manager" class="loc-manager"></div>
       </div>
     </div>
-
+    <div class="ref-section" data-keywords="planning planned date logged actual execution status executed in progress canceled gate">
+      <div class="ref-head" onclick="toggleRefSection(this)"><span>Planning fields 🗓️</span><span class="chev">▶</span></div>
+      <div class="ref-body">
+        <p><strong>Date logged:</strong> when you committed to the plan. For new entries: current month + 7-day grace into prior month. Locked on edit for bounties.</p>
+        <p><strong>Status:</strong> In Progress / Executed / Canceled (+ Greenlit for bounties).</p>
+        <p><strong>Planned date of execution:</strong> required. For Planned expense and Bounty, forward-only-unrestricted.</p>
+        <p><strong>Actual date of execution:</strong> hidden until Status = Executed. Modal pops up to confirm. Defaults to planned date if planned date is today or earlier, else today. Cleared from storage if Status reverts.</p>
+        <p><strong>Secondary tag</strong> (Planned expense only): None / Gift / Indulgence N.</p>
+      </div>
+    </div>
+    <div class="ref-section" data-keywords="sign in login auth session sync offline supabase 72 hour reauthenticate localStorage cache banner cloud">
+      <div class="ref-head" onclick="toggleRefSection(this)"><span>Sign-in &amp; sync 🔐</span><span class="chev">▶</span></div>
+      <div class="ref-body">
+        <p><strong>Sign-in window:</strong> once you sign in, you stay signed in on a rolling <strong>72-hour</strong> basis. Every time you open the app the clock resets, so the sign-in screen only returns after roughly 72 hours of <em>not</em> opening it — not 72 hours after your last live session.</p>
+        <p><strong>iOS caveat:</strong> the 72h timestamp lives in the same local storage iOS can purge for home-screen web apps. If iOS wipes storage entirely, the timestamp goes with it and you'll need to sign in again regardless — there's no way around that with browser storage alone.</p>
+        <p><strong>Offline banner:</strong> if there's no live cloud session (or a save fails), an <span style="background:#FFF4E5;border:1px solid #E0A23C;color:#8A5A00;padding:1px 6px;border-radius:4px">⚠️ Offline</span> banner appears under the tabs. Your edits still save on the device, but they aren't reaching the cloud until you sign in again. Sign out and back in to resume sync.</p>
+      </div>
+    </div>
+    <div class="ref-section" data-keywords="slash command gas sonic trak narwhal allstate icloud autofill">
+      <div class="ref-head" onclick="toggleRefSection(this)"><span>Slash commands ⌨️</span><span class="chev">▶</span></div>
+      <div class="ref-body">
+        <p>Type the slash command as the entire description. Fills in description, price, category, location, and (for some) date.</p>
+        <table>
+          <tr><th>Command</th><th>Description</th><th>Price</th><th>Date</th></tr>
+          <tr><td><code>/gas</code></td><td>Gasoline ⛽</td><td>—</td><td>—</td></tr>
+          <tr><td><code>/sonic</code></td><td>Sonic Fiber 10 Gbps Standard 🛜</td><td>$59.99</td><td>10th</td></tr>
+          <tr><td><code>/trak</code></td><td>FasTrak Toll Tag Replenishment 🚕</td><td>—</td><td>—</td></tr>
+          <tr><td><code>/narwhal</code></td><td>Narwhal Pro 🐳</td><td>$3.99</td><td>15th</td></tr>
+          <tr><td><code>/allstate</code></td><td>Allstate Auto Insurance 🤲🏻</td><td>$171.00</td><td>8th</td></tr>
+          <tr><td><code>/icloud</code></td><td>iCloud+ with 50 GB ☁️</td><td>$0.99</td><td>1st</td></tr>
+          <tr><td><code>/claude</code></td><td>Claude Pro 🤖</td><td>$20.00</td><td>20th</td></tr>
+        </table>
+        <p><strong>Savings shortcuts:</strong> <code>/dsc</code> → 🟠 Discover Cashback, <code>/chs</code> → 🔷 Chase Ultimate Reward, <code>/ven</code> → ✌🏻 Venmo Balance.</p>
+        <p><strong>Inline flag:</strong> <code>/flag</code> expands to 🚩 anywhere in the description (not just as the whole field) to mark an entry as incomplete. See <em>Flagging incomplete entries</em> below.</p>
+        <p><strong>Delta calculation in Savings Details</strong> — both directions trigger on a trailing space:</p>
+        <ul>
+          <li><strong>Forward</strong> <code>$X.XX /delta</code> + space → <code>$X.XX Δ $Y.YY</code>, where Y.YY = X.XX minus the amount paid (or full price if paid is 0/empty). Reads as "balance went from X to Y." Useful for the remaining gift card / store credit balance after an expense.</li>
+          <li><strong>Backward</strong> <code>/delta $Y.YY</code> + space → <code>$X.XX /delta $Y.YY</code>, where X.XX = Y.YY plus the <em>amount paid</em> (fallback: full price). True inverse of forward: since forward subtracts paid to find the remaining balance, backward adds paid back to recover the original. Only fires when amount paid (or full price) is set.</li>
+        </ul>
+        <p><strong>Keyword autofill:</strong> typing certain keywords anywhere in the description sets Instance + Category. "gasoline" → Expense + Vehicle. "sonic fiber" → Subscription + Utilities. "fastrak" → Expense + Vehicle.</p>
+      </div>
+    </div>
     <div class="ref-section" data-keywords="summary stat total spent saved full price bounties pending expenses savings pie chart by instance category status executed across months entire log split bill net reimbursement share">
-      <div class="ref-head" onclick="toggleRefSection(this)"><span>Summary tab</span><span class="chev">▶</span></div>
+      <div class="ref-head" onclick="toggleRefSection(this)"><span>Summary tab 📊</span><span class="chev">▶</span></div>
       <div class="ref-body">
         <p><strong>Scope:</strong> every figure on the Summary tab is computed from your <strong>entire expense log across all months</strong> — it is not limited to the current month or to what's visible in the log view.</p>
         <p><strong>Stat boxes:</strong></p>
@@ -732,30 +757,8 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
         <p>Charts redraw whenever you open the Summary tab.</p>
       </div>
     </div>
-
-    <div class="ref-section" data-keywords="sign in login auth session sync offline supabase 72 hour reauthenticate localStorage cache banner cloud">
-      <div class="ref-head" onclick="toggleRefSection(this)"><span>Sign-in &amp; sync</span><span class="chev">▶</span></div>
-      <div class="ref-body">
-        <p><strong>Sign-in window:</strong> once you sign in, you stay signed in on a rolling <strong>72-hour</strong> basis. Every time you open the app the clock resets, so the sign-in screen only returns after roughly 72 hours of <em>not</em> opening it — not 72 hours after your last live session.</p>
-        <p><strong>iOS caveat:</strong> the 72h timestamp lives in the same local storage iOS can purge for home-screen web apps. If iOS wipes storage entirely, the timestamp goes with it and you'll need to sign in again regardless — there's no way around that with browser storage alone.</p>
-        <p><strong>Offline banner:</strong> if there's no live cloud session (or a save fails), an <span style="background:#FFF4E5;border:1px solid #E0A23C;color:#8A5A00;padding:1px 6px;border-radius:4px">⚠️ Offline</span> banner appears under the tabs. Your edits still save on the device, but they aren't reaching the cloud until you sign in again. Sign out and back in to resume sync.</p>
-      </div>
-    </div>
-
-    <div class="ref-section" data-keywords="manage saved locations edit rename delete remove vendor url datalist suggestions cleanup typo">
-      <div class="ref-head" onclick="toggleRefSection(this)"><span>Manage saved locations</span><span class="chev">▶</span></div>
-      <div class="ref-body">
-        <p>Every location you type is remembered and offered as a suggestion in the Location field. Fix a typo with rename, or remove ones you no longer want.</p>
-        <ul>
-          <li><strong>Rename (✎):</strong> if existing entries use the old name, you'll confirm a count — the new name is then written to those entries too, so the fix propagates everywhere.</li>
-          <li><strong>Remove (×):</strong> deletes the suggestion. If entries still use it, you'll confirm and it's also cleared from those entries (otherwise it would reappear on the next save, since suggestions are re-harvested from your entries). A location used by no entries is removed without a prompt.</li>
-        </ul>
-        <div id="location-manager" class="loc-manager"></div>
-      </div>
-    </div>
-
     <div class="ref-section" data-keywords="draft autosave unsaved persist restore add expense fields recover reload">
-      <div class="ref-head" onclick="toggleRefSection(this)"><span>Unsaved drafts</span><span class="chev">▶</span></div>
+      <div class="ref-head" onclick="toggleRefSection(this)"><span>Unsaved drafts 📝</span><span class="chev">▶</span></div>
       <div class="ref-body">
         <p>If you start filling in the <strong>Add expense</strong> form and leave without pressing Add — reloading, switching apps, or closing the tab — your in-progress fields are kept and restored next time you open the app, with a brief "Restored unsaved draft" note.</p>
         <p>This applies to <strong>new entries only</strong>, not edits of existing entries. The draft is saved continuously as you type (and flushed when the app is backgrounded, for iOS), and is cleared the moment you press Add or use the Clear button.</p>
@@ -913,13 +916,13 @@ async function sbLoad() {
       .select('data')
       .eq('id', SB_ROW_ID);
     if (error) { setSyncState(false); return null; }   // failed/not authorized → caller uses cache
-    if (!data || !data.length) { setSyncState(true); return { entries: [], locations: [] }; }
+    if (!data || !data.length) { setSyncState(true); return { entries: [], locations: [], discover: null }; }
     const raw = data[0].data;
-    // Support both old format (bare array) and new wrapped format ({entries, locations}).
+    // Support both old format (bare array) and new wrapped format ({entries, locations, discover}).
     // Old format is migrated transparently on the next saveData() call.
     setSyncState(true);
-    if (Array.isArray(raw)) return { entries: raw, locations: [] };
-    return { entries: Array.isArray(raw.entries) ? raw.entries : [], locations: Array.isArray(raw.locations) ? raw.locations : [] };
+    if (Array.isArray(raw)) return { entries: raw, locations: [], discover: null };
+    return { entries: Array.isArray(raw.entries) ? raw.entries : [], locations: Array.isArray(raw.locations) ? raw.locations : [], discover: raw.discover || null };
   } catch(e) { setSyncState(false); return null; }
 }
 
@@ -927,7 +930,7 @@ async function sbSave(expensesArr) {
   try {
     const { error } = await sbClient
       .from('expenses')
-      .upsert({ id: SB_ROW_ID, data: { entries: expensesArr, locations: knownLocations } });
+      .upsert({ id: SB_ROW_ID, data: { entries: expensesArr, locations: knownLocations, discover: discoverCashback } });
     setSyncState(!error);   // a rejected upsert (RLS / no session) flips the banner on
   } catch(e) { setSyncState(false); }
 }
@@ -952,6 +955,7 @@ const SLASH_COMMANDS={
 };
 
 let expenses=[];
+let discoverCashback={year:new Date().getFullYear(),q1:'',q2:'',q3:'',q4:''}; // Discover 5% quarterly cashback categories (synced in the JSONB row)
 let editingId=null;
 let lastAutoInstance=null,lastAutoCategory=null;
 let manualOrder=[];
@@ -1652,6 +1656,34 @@ async function deleteLocation(loc){
   showToast(n>0?`Removed from ${n} ${n===1?'entry':'entries'}.`:'Location removed.');
 }
 
+// ── Discover 5% cashback categories ───────────────────────────────────────────
+// Manually-entered quarterly categories, synced in the JSONB row. Cleared automatically
+// at the start of each new calendar year (on the first open of that year, since a static
+// PWA can't run code at midnight Jan 1).
+function normalizeDiscover(d){
+  const cur=new Date().getFullYear();
+  if(!d||typeof d!=='object')return{year:cur,q1:'',q2:'',q3:'',q4:''};
+  return{year:Number(d.year)||cur,q1:d.q1||'',q2:d.q2||'',q3:d.q3||'',q4:d.q4||''};
+}
+function applyDiscoverYearReset(){
+  const cur=new Date().getFullYear();
+  if(discoverCashback.year!==cur){
+    discoverCashback={year:cur,q1:'',q2:'',q3:'',q4:''};
+    saveData();   // persist the cleared state for the new year
+  }
+}
+function renderDiscover(){
+  [['q1','disc-q1'],['q2','disc-q2'],['q3','disc-q3'],['q4','disc-q4']].forEach(([k,id])=>{const el=document.getElementById(id);if(el)el.value=discoverCashback[k]||'';});
+}
+function updateDiscover(){
+  discoverCashback={year:new Date().getFullYear(),
+    q1:document.getElementById('disc-q1').value,
+    q2:document.getElementById('disc-q2').value,
+    q3:document.getElementById('disc-q3').value,
+    q4:document.getElementById('disc-q4').value};
+  saveData();
+}
+
 async function loadData(){
   const logEl = document.getElementById('log');
   if(logEl) logEl.innerHTML = '<div style="text-align:center;padding:2rem;color:#888">Loading…</div>';
@@ -1662,17 +1694,18 @@ async function loadData(){
   if(remote !== null) {
     expenses = remote.entries || [];
     knownLocations = remote.locations || [];
-    try{localStorage.setItem(STORAGE_KEY, JSON.stringify({ entries: expenses, locations: knownLocations }));}catch(e){}
+    discoverCashback = normalizeDiscover(remote.discover);
+    try{localStorage.setItem(STORAGE_KEY, JSON.stringify({ entries: expenses, locations: knownLocations, discover: discoverCashback }));}catch(e){}
   } else {
     // Offline — fall back to local cache. Support both old bare-array and new wrapped format.
     try{
       const d=localStorage.getItem(STORAGE_KEY);
       if(d){
         const parsed=JSON.parse(d);
-        if(Array.isArray(parsed)){expenses=parsed;knownLocations=[];}
-        else{expenses=parsed.entries||[];knownLocations=parsed.locations||[];}
-      }else{expenses=[];knownLocations=[];}
-    }catch(e){expenses=[];knownLocations=[];}
+        if(Array.isArray(parsed)){expenses=parsed;knownLocations=[];discoverCashback=normalizeDiscover(null);}
+        else{expenses=parsed.entries||[];knownLocations=parsed.locations||[];discoverCashback=normalizeDiscover(parsed.discover);}
+      }else{expenses=[];knownLocations=[];discoverCashback=normalizeDiscover(null);}
+    }catch(e){expenses=[];knownLocations=[];discoverCashback=normalizeDiscover(null);}
     showToast('Offline — using locally cached data.');
   }
   // Migrate old category names to current names
@@ -1705,6 +1738,8 @@ async function loadData(){
   updateIndulgenceOptions();
   updateLocationSuggestions();
   renderLocationManager();
+  applyDiscoverYearReset();   // clear the categories if we've rolled into a new calendar year
+  renderDiscover();
 }
 async function saveData(){
   expenses=renumberIndulgences(expenses);
@@ -1714,7 +1749,7 @@ async function saveData(){
   expenses.forEach(e=>{if(e.location&&!seen.has(e.location)){seen.add(e.location);knownLocations.push(e.location);}});
   knownLocations.sort();
   await sbSave(expenses);
-  try{localStorage.setItem(STORAGE_KEY,JSON.stringify({entries:expenses,locations:knownLocations}));}catch(e){}
+  try{localStorage.setItem(STORAGE_KEY,JSON.stringify({entries:expenses,locations:knownLocations,discover:discoverCashback}));}catch(e){}
   updateLocationSuggestions();
   if(locEditing===null)renderLocationManager();
 }
@@ -2302,8 +2337,62 @@ function updateSplitLabel(){
   const dir=document.querySelector('input[name="split-dir"]:checked');
   document.getElementById('split-amount-label').textContent=dir&&dir.value==='received'?'Amount received ($)':'Your share ($)';
 }
-function calcSavings(){const f=parseFloat(document.getElementById('f-full').value)||0,p=parseFloat(document.getElementById('f-paid').value)||0;document.getElementById('f-saved').value=f-p>=0?(f-p).toFixed(2):'';}
-function fmtField(el){const v=el.value;if(v===''||v===null)return;const n=parseFloat(v);if(!isNaN(n))el.value=n.toFixed(2);}
+// ── Amount arithmetic ─────────────────────────────────────────────────────────
+// $ fields accept quick calculations (+ - * /, parentheses, unary minus) evaluated with
+// standard precedence. Uses a small hand-rolled recursive-descent parser — never eval().
+// Returns a finite Number, or null for empty/invalid input.
+function evalAmount(str){
+  if(str==null)return null;
+  const s=String(str).trim();
+  if(s==='')return null;
+  if(!/^[0-9+\-*/().\s]+$/.test(s))return null;          // whitelist characters only
+  const toks=s.match(/\d*\.?\d+|[+\-*/()]/g);
+  if(!toks)return null;
+  let i=0;
+  const peek=()=>toks[i];
+  function factor(){
+    if(peek()==='-'){i++;const v=factor();return v===null?null:-v;}
+    if(peek()==='+'){i++;return factor();}
+    if(peek()==='('){i++;const v=expr();if(peek()!==')')return null;i++;return v;}
+    const t=peek();
+    if(t!==undefined&&/^\d*\.?\d+$/.test(t)){i++;return parseFloat(t);}
+    return null;
+  }
+  function term(){
+    let v=factor();if(v===null)return null;
+    while(peek()==='*'||peek()==='/'){const op=toks[i++];const r=factor();if(r===null)return null;v=op==='*'?v*r:v/r;}
+    return v;
+  }
+  function expr(){
+    let v=term();if(v===null)return null;
+    while(peek()==='+'||peek()==='-'){const op=toks[i++];const r=term();if(r===null)return null;v=op==='+'?v+r:v-r;}
+    return v;
+  }
+  const val=expr();
+  if(val===null||i!==toks.length||!isFinite(val))return null;
+  return val;
+}
+// Evaluate the visible $ fields to plain numbers before a submit. Returns false (and warns)
+// if a relevant field holds something that isn't a valid number or calculation.
+function normalizeAmountFields(){
+  const ids=['f-full'];
+  if(document.getElementById('f-hassavings').checked)ids.push('f-paid');
+  if(document.getElementById('f-hassplit').checked)ids.push('f-splitamount');
+  for(const id of ids){
+    const el=document.getElementById(id);
+    if(!el)continue;
+    const v=el.value.trim();
+    if(v==='')continue;
+    const n=evalAmount(v);
+    if(n===null){showToast('Check the amount — that\u2019s not a valid number or calculation.');el.focus();return false;}
+    el.value=n.toFixed(2);
+  }
+  return true;
+}
+function calcSavings(){const f=evalAmount(document.getElementById('f-full').value)||0,p=evalAmount(document.getElementById('f-paid').value)||0;document.getElementById('f-saved').value=f-p>=0?(f-p).toFixed(2):'';}
+function fmtField(el){const v=el.value;if(v===''||v==null)return;const n=evalAmount(v);if(n!==null)el.value=n.toFixed(2);}
+// Enter evaluates a $ field in place (desktop / any keyboard with a Return key).
+function onAmountKey(ev,el){if(ev.key==='Enter'){ev.preventDefault();fmtField(el);calcSavings();}}
 
 function readForm(existingId){
   const desc=document.getElementById('f-desc').value.trim();
@@ -2409,6 +2498,7 @@ function readForm(existingId){
 }
 
 function submitExpense(){
+  if(!normalizeAmountFields())return;   // evaluate any +/-/*// expressions to plain numbers first
   if(editingId!==null){
     const updated=readForm(editingId);if(!updated)return;
     const idx=expenses.findIndex(e=>e.id===editingId);if(idx>=0)expenses[idx]=updated;
@@ -3273,6 +3363,7 @@ document.addEventListener('visibilitychange',()=>{if(document.visibilityState===
 const _locMgr=document.getElementById('location-manager');
 if(_locMgr)_locMgr.addEventListener('click',onLocManagerClick);
 renderLocationManager();
+renderDiscover();
 // Skip gate if opened within 72h (checked synchronously) or a live session exists.
 gateCheck().then(ok => { if (ok) { loadData(); restoreDraft(); } }).catch(() => {});
 </script>
