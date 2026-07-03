@@ -557,6 +557,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
         <p><strong>Planned date:</strong> forward-only, unrestricted future. Any date today or later.</p>
         <p><strong>Greenlit gate:</strong> a checkbox between In Progress and Executed. Use it to mark "I've decided this will happen" without yet executing.</p>
         <p><strong>Roll-forward:</strong> open bounties display under the 1st of the current month in By date logged sort, and their recorded checkbox resets at month boundaries.</p>
+        <p><strong>Month reset:</strong> on the first open of a new month, any open bounty whose Planned execution date now sits in a past month has that date (and time) cleared and a 🚩 appended to its description — the red card and blocked transcription checkbox force a review. Editing the entry requires setting a new planned date.</p>
       </div>
     </div>
     <div class="ref-section" data-keywords="category food vehicle transportation miscellaneous home housing health medical personal care clothing utilities color badge">
@@ -609,6 +610,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
       <div class="ref-body">
         <p><strong>Search box:</strong> a global query across each entry's description, location, category, instance and status labels, savings type/details, recipient note, split details, and amounts. Multiple words are AND-matched (all must appear).</p>
         <p><strong>Filters take priority:</strong> the Instance / Category / Status dropdowns decide what's on screen first; the search box only drills down within that subset. So filtering to "Food" and then searching narrows to Food entries that also match the query — search never widens past the filters.</p>
+        <p><strong>Within-week order (By date logged):</strong> weeks stay chronological, but inside each week entries are grouped by priority — ☑️ executed planning entries first (by actual date), then ⏳ open planning entries (by planned date), then regular expenses (by date logged). Bounties count as planning entries. Manually dragged cards always keep their dragged position, above this grouping.</p>
         <p><strong>Reset filters</strong> clears the search box and all three dropdowns at once. It leaves the sort mode alone, since sort is a view preference rather than a filter.</p>
         <p><strong>Duplicate (⧉):</strong> opens a pre-filled <em>Add expense</em> draft from any card — copying description, full price, category, and location as a brand-new <strong>Expense</strong>. The instance, status, discount, split, recipient, tags, and dates are all reset (date defaults to today), and nothing is saved until you press Add, so you can tweak first or cancel. Handy for repeat purchases of the same thing.</p>
       </div>
@@ -1684,6 +1686,33 @@ function updateDiscover(){
   saveData();
 }
 
+// ── Bounty month reset ────────────────────────────────────────────────────────
+// Open bounties roll forward to the 1st of each month. On the first open of a new month,
+// any open bounty whose Planned execution date now sits in a PAST month gets that date (and
+// its time) cleared and a 🚩 appended to the description, forcing a review: the red card and
+// blocked transcription checkbox persist until the entry is revisited. Self-limiting — once
+// plannedDate is null the entry can't re-trigger, and an already-flagged entry isn't
+// double-flagged. (Like the Discover year clear, this runs on open, not at midnight.)
+function applyBountyMonthReset(){
+  const curMo=currentMonthKey();
+  let changed=0;
+  expenses.forEach(e=>{
+    const isOpenBounty=isBountyInstance(e.instance)&&(e.status==='inprogress'||e.status==='greenlit'||!e.status);
+    if(!isOpenBounty||!e.plannedDate)return;
+    const mo=getMonthKey(e.plannedDate);
+    if(mo&&mo<curMo){
+      e.plannedDate=null;
+      e.plannedTime=null;
+      if(!isFlagged(e))e.desc=((e.desc||'')+' '+FLAG_EMOJI).trim();
+      changed++;
+    }
+  });
+  if(changed){
+    saveData();
+    showToast(`${changed} open ${changed===1?'bounty':'bounties'} rolled into the new month — planned date cleared, flagged for review.`);
+  }
+}
+
 async function loadData(){
   const logEl = document.getElementById('log');
   if(logEl) logEl.innerHTML = '<div style="text-align:center;padding:2rem;color:#888">Loading…</div>';
@@ -1731,6 +1760,7 @@ async function loadData(){
   // Renumber indulgences on load to resolve any other inconsistencies from prior bugs.
   expenses=renumberIndulgences(expenses);
   if(migrated)saveData();
+  applyBountyMonthReset();   // new month: clear stale planned dates on open bounties + auto-🚩
   loadManualOrder();
   loadSortMode();
   updateSortButtons();
@@ -2712,6 +2742,23 @@ function onDrop(ev,targetId){
   renderLog();
   dragSrcId=null;
 }
+// Within-week ordering for By date logged. Priority: (1) explicit manual drag order;
+// (2) tier — executed planning entries, then open/canceled planning entries, then regular
+// expenses (bounties count as planning; a freshly month-reset 🚩 bounty therefore clusters
+// near the top of the 1st-of-month week); (3) tier-appropriate date desc; (4) newest id.
+// Week grouping stays chronological — tiers only reorder cards inside a week, so the ☑️
+// executed planning entries surface at the top of the week they were executed in.
+function entryTier(e){
+  if(!isPlanningInstance(e.instance))return 2;
+  return e.status==='executed'?0:1;
+}
+function tierDate(e){
+  if(isPlanningInstance(e.instance)){
+    if(e.status==='executed')return e.actualDate||getDisplayDate(e);
+    return e.plannedDate||getDisplayDate(e);
+  }
+  return getDisplayDate(e);
+}
 function sortWeekEntries(entries){
   return[...entries].sort((a,b)=>{
     const ai=manualOrder.indexOf(a.id);
@@ -2719,7 +2766,9 @@ function sortWeekEntries(entries){
     if(ai!==-1&&bi!==-1)return ai-bi;
     if(ai!==-1)return -1;
     if(bi!==-1)return 1;
-    const da=getDisplayDate(a),db=getDisplayDate(b);
+    const ta=entryTier(a),tb=entryTier(b);
+    if(ta!==tb)return ta-tb;
+    const da=tierDate(a),db=tierDate(b);
     if(da<db)return 1;
     if(da>db)return -1;
     return b.id-a.id;
