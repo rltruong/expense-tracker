@@ -610,7 +610,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
       <div class="ref-body">
         <p><strong>Search box:</strong> a global query across each entry's description, location, category, instance and status labels, savings type/details, recipient note, split details, and amounts. Multiple words are AND-matched (all must appear).</p>
         <p><strong>Filters take priority:</strong> the Instance / Category / Status dropdowns decide what's on screen first; the search box only drills down within that subset. So filtering to "Food" and then searching narrows to Food entries that also match the query — search never widens past the filters.</p>
-        <p><strong>Within-week order (By date logged):</strong> weeks stay chronological, but inside each week entries are grouped by priority — ☑️ executed planning entries first (by actual date), then ⏳ open planning entries (by planned date), then regular expenses (by date logged). Bounties count as planning entries. Priority outranks dragging: an entry that becomes executed always surfaces at the top of its week. Drag-and-drop reorders <em>within</em> a priority group (cross-group drags are blocked with a note), and a saved drag order is kept inside its group.</p>
+        <p><strong>Within-week order (By date logged):</strong> weeks stay chronological, but inside each week entries are grouped by priority — ☑️ executed planning entries first (by actual date), then regular expenses (newest first), then ⏳ open and canceled planning entries at the bottom (by planned date). Bounties count as planning entries; since open bounties roll onto the 1st-of-month week, parking them at the bottom keeps them from sitting on top all month. Priority outranks dragging: an entry that becomes executed always surfaces at the top of its week. Drag-and-drop reorders <em>within</em> a priority group (cross-group drags are blocked with a note), and drag order syncs across devices.</p>
         <p><strong>Reset filters</strong> clears the search box and all three dropdowns at once. It leaves the sort mode alone, since sort is a view preference rather than a filter.</p>
         <p><strong>Duplicate (⧉):</strong> opens a pre-filled <em>Add expense</em> draft from any card — copying description, full price, category, and location as a brand-new <strong>Expense</strong>. The instance, status, discount, split, recipient, tags, and dates are all reset (date defaults to today), and nothing is saved until you press Add, so you can tweak first or cancel. Handy for repeat purchases of the same thing.</p>
       </div>
@@ -918,13 +918,13 @@ async function sbLoad() {
       .select('data')
       .eq('id', SB_ROW_ID);
     if (error) { setSyncState(false); return null; }   // failed/not authorized → caller uses cache
-    if (!data || !data.length) { setSyncState(true); return { entries: [], locations: [], discover: null }; }
+    if (!data || !data.length) { setSyncState(true); return { entries: [], locations: [], discover: null, order: null }; }
     const raw = data[0].data;
-    // Support both old format (bare array) and new wrapped format ({entries, locations, discover}).
+    // Support both old format (bare array) and new wrapped format ({entries, locations, discover, order}).
     // Old format is migrated transparently on the next saveData() call.
     setSyncState(true);
-    if (Array.isArray(raw)) return { entries: raw, locations: [], discover: null };
-    return { entries: Array.isArray(raw.entries) ? raw.entries : [], locations: Array.isArray(raw.locations) ? raw.locations : [], discover: raw.discover || null };
+    if (Array.isArray(raw)) return { entries: raw, locations: [], discover: null, order: null };
+    return { entries: Array.isArray(raw.entries) ? raw.entries : [], locations: Array.isArray(raw.locations) ? raw.locations : [], discover: raw.discover || null, order: Array.isArray(raw.order) ? raw.order : null };
   } catch(e) { setSyncState(false); return null; }
 }
 
@@ -932,7 +932,7 @@ async function sbSave(expensesArr) {
   try {
     const { error } = await sbClient
       .from('expenses')
-      .upsert({ id: SB_ROW_ID, data: { entries: expensesArr, locations: knownLocations, discover: discoverCashback } });
+      .upsert({ id: SB_ROW_ID, data: { entries: expensesArr, locations: knownLocations, discover: discoverCashback, order: manualOrder } });
     setSyncState(!error);   // a rejected upsert (RLS / no session) flips the banner on
   } catch(e) { setSyncState(false); }
 }
@@ -1722,11 +1722,13 @@ async function loadData(){
   // Try Supabase first; null means connection failed, object means connected (possibly empty).
   // sbLoad() now always returns {entries, locations} or null.
   const remote = await sbLoad();
+  let syncedOrder=null;
   if(remote !== null) {
     expenses = remote.entries || [];
     knownLocations = remote.locations || [];
     discoverCashback = normalizeDiscover(remote.discover);
-    try{localStorage.setItem(STORAGE_KEY, JSON.stringify({ entries: expenses, locations: knownLocations, discover: discoverCashback }));}catch(e){}
+    syncedOrder = remote.order;
+    try{localStorage.setItem(STORAGE_KEY, JSON.stringify({ entries: expenses, locations: knownLocations, discover: discoverCashback, order: syncedOrder||[] }));}catch(e){}
   } else {
     // Offline — fall back to local cache. Support both old bare-array and new wrapped format.
     try{
@@ -1734,7 +1736,7 @@ async function loadData(){
       if(d){
         const parsed=JSON.parse(d);
         if(Array.isArray(parsed)){expenses=parsed;knownLocations=[];discoverCashback=normalizeDiscover(null);}
-        else{expenses=parsed.entries||[];knownLocations=parsed.locations||[];discoverCashback=normalizeDiscover(parsed.discover);}
+        else{expenses=parsed.entries||[];knownLocations=parsed.locations||[];discoverCashback=normalizeDiscover(parsed.discover);syncedOrder=Array.isArray(parsed.order)?parsed.order:null;}
       }else{expenses=[];knownLocations=[];discoverCashback=normalizeDiscover(null);}
     }catch(e){expenses=[];knownLocations=[];discoverCashback=normalizeDiscover(null);}
     showToast('Offline — using locally cached data.');
@@ -1762,7 +1764,10 @@ async function loadData(){
   // Renumber indulgences on load to resolve any other inconsistencies from prior bugs.
   expenses=renumberIndulgences(expenses);
   if(migrated)saveData();
+  // Drag order is synced in the JSONB row. Prefer the synced copy; fall back to this
+  // device's legacy localStorage order (which then migrates into the row on the next save).
   loadManualOrder();
+  if(Array.isArray(syncedOrder)&&syncedOrder.length){manualOrder=syncedOrder;saveManualOrder();}
   applyBountyMonthReset();   // new month: clear stale planned dates on open bounties + auto-🚩 (needs manualOrder loaded)
   loadSortMode();
   updateSortButtons();
@@ -1781,7 +1786,7 @@ async function saveData(){
   expenses.forEach(e=>{if(e.location&&!seen.has(e.location)){seen.add(e.location);knownLocations.push(e.location);}});
   knownLocations.sort();
   await sbSave(expenses);
-  try{localStorage.setItem(STORAGE_KEY,JSON.stringify({entries:expenses,locations:knownLocations,discover:discoverCashback}));}catch(e){}
+  try{localStorage.setItem(STORAGE_KEY,JSON.stringify({entries:expenses,locations:knownLocations,discover:discoverCashback,order:manualOrder}));}catch(e){}
   updateLocationSuggestions();
   if(locEditing===null)renderLocationManager();
 }
@@ -2740,7 +2745,7 @@ function onDrop(ev,targetId){
     return;
   }
   if(entryTier(src)!==entryTier(tgt)){
-    showToast('Reorder only within the same priority group (executed / open planning / regular).');
+    showToast('Reorder only within the same priority group (executed / regular / open planning).');
     dragSrcId=null;
     return;
   }
@@ -2756,19 +2761,22 @@ function onDrop(ev,targetId){
   manualOrder=manualOrder.filter(id=>!currentOrder.includes(id));
   manualOrder=[...manualOrder,...currentOrder];
   saveManualOrder();
+  saveData();   // drag order is synced in the JSONB row — push it to the cloud too
   renderLog();
   dragSrcId=null;
 }
-// Within-week ordering for By date logged. Priority: (1) tier — executed planning entries,
-// then open/canceled planning entries, then regular expenses (bounties count as planning);
+// Within-week ordering for By date logged. Priority: (1) tier — ☑️ executed planning entries
+// first, then REGULAR expenses (so the newest logging sits right under the executed group),
+// then ⏳ open/canceled planning entries at the bottom of the week (open bounties roll onto
+// the 1st-of-month week all month, so parking them low keeps them from squatting on top);
 // (2) manual drag order WITHIN a tier; (3) tier-appropriate date desc; (4) newest id.
 // Tier outranks drag on purpose: onDrop pins an entire week's order into manualOrder, so if
 // drag came first, one old drag would permanently stop executed entries from surfacing at the
-// top of their week (the bug this ordering fixes). Drags are correspondingly restricted to
-// same-tier targets. Weeks/months stay chronological — tiers only reorder inside a week.
+// top of their week. Drags are correspondingly restricted to same-tier targets. Weeks/months
+// stay chronological — tiers only reorder inside a week.
 function entryTier(e){
-  if(!isPlanningInstance(e.instance))return 2;
-  return e.status==='executed'?0:1;
+  if(!isPlanningInstance(e.instance))return 1;
+  return e.status==='executed'?0:2;
 }
 function tierDate(e){
   if(isPlanningInstance(e.instance)){

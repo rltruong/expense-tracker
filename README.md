@@ -13,7 +13,7 @@ The entire app is one `index.html` file — vanilla HTML/CSS/JavaScript with no 
 - **Planning workflow** — planned and bounty entries carry a status lifecycle (in progress → greenlit → executed) plus planned/actual dates.
 - **Hobonichi journaling hints** — every entry shows a transcription checkbox; planning entries also show a day-of-week + day-number page hint so you know which planner page to write on.
 - **Sticker placement logic** — built-in rules for placing physical bounty and indulgence stickers in the planner.
-- **Drag-and-drop ordering**, collapsible month/week grouping, and dual sort modes (by date logged vs. by planned date). In *By date logged*, weeks stay chronological but each week internally surfaces ☑️ executed planning entries first, then ⏳ open planning entries, then regular expenses; priority outranks dragging (drags reorder within a priority group).
+- **Drag-and-drop ordering** (synced across devices), collapsible month/week grouping, and dual sort modes (by date logged vs. by planned date). In *By date logged*, weeks stay chronological but each week internally surfaces ☑️ executed planning entries first, then regular expenses (newest first), then ⏳ open planning entries at the bottom; priority outranks dragging (drags reorder within a priority group).
 - **Summary dashboards** — breakdowns by instance, category, and status, with bar and pie charts.
 - **Searchable log** — a global search box on top of the instance/category/status filters, with a one-tap **Reset filters**. Filters decide what's shown; search only drills down within them.
 - **Duplicate as new** — a ⧉ button on each log card opens a pre-filled Add draft (description, full price, category, location) as a fresh **Expense**, so repeat purchases take seconds. Metadata and discounts deliberately reset; the date defaults to today.
@@ -239,7 +239,7 @@ Open `index.html` in a browser (or serve it from any static host). Sign in with 
 
 - On load, the app tries Supabase first. A `null` result means the connection failed (and the local cache is used); an empty array means "connected but no data yet."
 - Every save writes to Supabase and mirrors to `localStorage`.
-- Per-device UI state (collapsed sections, sort mode, manual drag order) is stored locally and not synced.
+- Per-device UI state (collapsed sections, sort mode) is stored locally and not synced. **Manual drag order is synced** in the JSONB row (with a device-local fallback that migrates into the row on the next save), so drags survive device switches and iOS storage purges.
 
 ### Sign-in & sync
 
@@ -268,7 +268,7 @@ Location suggestions are backed by a **persistent `knownLocations` list** that i
 - **Rename** rewrites `knownLocations` *and* the `location` field on every entry using the old name (confirmed with a count). This is how you fix a typo everywhere at once.
 - **Remove** drops the suggestion; if any entries still use it you confirm a count and it's cleared from those entries too — otherwise it would just reappear on the next save. A location used by zero entries is removed silently.
 
-**Data shape note:** the Supabase row stores `{ entries: [...], locations: [...], discover: {...} }` instead of a bare array. The code auto-migrates old bare-array data on first load, and treats a missing `discover` key as an empty set of categories. If you ever need to revert to code that predates this change, update `sbLoad` to handle the new shape (or export/reimport via the Data panel first).
+**Data shape note:** the Supabase row stores `{ entries: [...], locations: [...], discover: {...}, order: [...] }` instead of a bare array. The code auto-migrates old bare-array data on first load, and treats missing `discover`/`order` keys as empty. If you ever need to revert to code that predates this change, update `sbLoad` to handle the new shape (or export/reimport via the Data panel first).
 
 ### Amount arithmetic
 
@@ -297,7 +297,7 @@ This tracker was built iteratively across several sessions. Notable milestones:
 - Added the Hobonichi Weeks journaling layer: transcription checkboxes, ⏳/☑️ day hints, monthly roll-forward for open bounties, and the physical sticker-placement workflow.
 - Added drag-and-drop ordering, dual sort modes, collapsible month/week grouping, and summary charts.
 - Added the `Transcribe to Memo` label beside the transcription checkbox on non-planning expense cards.
-- **Latest change:** fixed the within-week priority so it actually works in practice — a single drag used to pin an entire week's order permanently, silently overriding the tiers, so executed planned expenses never surfaced. Tier is now the first sort key (☑️ executed planning → ⏳ open planning → regular), with drag order applying <em>within</em> a tier; cross-tier drags are blocked with a note, and an edit that changes an entry's tier or week drops its stale drag position. Just before: within-week tiers introduced; open bounties gained a month reset (stale planned date cleared + auto-🚩).
+- **Latest change:** within-week tiers reordered to match real usage — ☑️ executed planning first, then **regular expenses (newest first)**, with ⏳ open/canceled planning parked at the bottom of the week (open bounties roll onto the 1st-of-month week, so this stops them squatting on top all month). **Manual drag order now syncs** through the JSONB row (`order` key) with a device-local fallback, so drags survive device switches and iOS purges. Just before: tier-first sorting fixed a whole-week drag-pinning bug; open bounties gained a month reset (stale planned date cleared + auto-🚩).
 - Before that: a **🚩 flag** for incomplete entries (`/flag` → 🚩, light-red card, a per-card *Reviewed?* control, transcription lock until cleared); a **Manage saved locations** panel (rename/remove that rewrites matching entries, with confirmation counts); **unsaved Add-expense draft recovery**; and a login-flow hardening where the 72-hour window slides on every open and is checked synchronously before the async Supabase session call, with an offline banner surfacing local-only state.
 - Earlier in this line of work: each Expense log card gained a **⧉ Duplicate** button that opens a pre-filled Add draft as a new Expense — carrying description, full price, category, and location, while resetting instance, discounts, and all per-transaction metadata, with the date defaulting to today. Before that: the Summary's spend rollups switched to net out-of-pocket for split bills, the planning-match picker stopped auto-hijacking new expenses, a global search box and Reset filters landed in the Expense log, the `/delta` shortcut gained a backward direction, and location suggestions became a persistent `knownLocations` list surviving month clears.
 
