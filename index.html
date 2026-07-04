@@ -610,7 +610,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
       <div class="ref-body">
         <p><strong>Search box:</strong> a global query across each entry's description, location, category, instance and status labels, savings type/details, recipient note, split details, and amounts. Multiple words are AND-matched (all must appear).</p>
         <p><strong>Filters take priority:</strong> the Instance / Category / Status dropdowns decide what's on screen first; the search box only drills down within that subset. So filtering to "Food" and then searching narrows to Food entries that also match the query — search never widens past the filters.</p>
-        <p><strong>Within-week order (By date logged):</strong> weeks stay chronological, but inside each week entries are grouped by priority — ☑️ executed planning entries first (by actual date), then ⏳ open planning entries (by planned date), then regular expenses (by date logged). Bounties count as planning entries. Manually dragged cards always keep their dragged position, above this grouping.</p>
+        <p><strong>Within-week order (By date logged):</strong> weeks stay chronological, but inside each week entries are grouped by priority — ☑️ executed planning entries first (by actual date), then ⏳ open planning entries (by planned date), then regular expenses (by date logged). Bounties count as planning entries. Priority outranks dragging: an entry that becomes executed always surfaces at the top of its week. Drag-and-drop reorders <em>within</em> a priority group (cross-group drags are blocked with a note), and a saved drag order is kept inside its group.</p>
         <p><strong>Reset filters</strong> clears the search box and all three dropdowns at once. It leaves the sort mode alone, since sort is a view preference rather than a filter.</p>
         <p><strong>Duplicate (⧉):</strong> opens a pre-filled <em>Add expense</em> draft from any card — copying description, full price, category, and location as a brand-new <strong>Expense</strong>. The instance, status, discount, split, recipient, tags, and dates are all reset (date defaults to today), and nothing is saved until you press Add, so you can tweak first or cancel. Handy for repeat purchases of the same thing.</p>
       </div>
@@ -1704,10 +1704,12 @@ function applyBountyMonthReset(){
       e.plannedDate=null;
       e.plannedTime=null;
       if(!isFlagged(e))e.desc=((e.desc||'')+' '+FLAG_EMOJI).trim();
+      manualOrder=manualOrder.filter(id=>id!==e.id);  // week changed → stale drag position
       changed++;
     }
   });
   if(changed){
+    saveManualOrder();
     saveData();
     showToast(`${changed} open ${changed===1?'bounty':'bounties'} rolled into the new month — planned date cleared, flagged for review.`);
   }
@@ -1760,8 +1762,8 @@ async function loadData(){
   // Renumber indulgences on load to resolve any other inconsistencies from prior bugs.
   expenses=renumberIndulgences(expenses);
   if(migrated)saveData();
-  applyBountyMonthReset();   // new month: clear stale planned dates on open bounties + auto-🚩
   loadManualOrder();
+  applyBountyMonthReset();   // new month: clear stale planned dates on open bounties + auto-🚩 (needs manualOrder loaded)
   loadSortMode();
   updateSortButtons();
   renderLog();
@@ -2531,7 +2533,17 @@ function submitExpense(){
   if(!normalizeAmountFields())return;   // evaluate any +/-/*// expressions to plain numbers first
   if(editingId!==null){
     const updated=readForm(editingId);if(!updated)return;
-    const idx=expenses.findIndex(e=>e.id===editingId);if(idx>=0)expenses[idx]=updated;
+    const idx=expenses.findIndex(e=>e.id===editingId);
+    if(idx>=0){
+      // A tier or week change makes the old drag position meaningless in the new context —
+      // drop it so the entry re-sorts naturally (e.g. freshly executed → top of its week).
+      const prev=expenses[idx];
+      if(entryTier(prev)!==entryTier(updated)||getWeekMonday(getDisplayDate(prev))!==getWeekMonday(getDisplayDate(updated))){
+        manualOrder=manualOrder.filter(id=>id!==editingId);
+        saveManualOrder();
+      }
+      expenses[idx]=updated;
+    }
     saveData();editingId=null;document.getElementById('edit-banner').classList.remove('visible');document.getElementById('submit-btn').textContent='Add expense';
     clearForm();switchTab('log');showToast('Entry updated!');
   }else{
@@ -2727,6 +2739,11 @@ function onDrop(ev,targetId){
     dragSrcId=null;
     return;
   }
+  if(entryTier(src)!==entryTier(tgt)){
+    showToast('Reorder only within the same priority group (executed / open planning / regular).');
+    dragSrcId=null;
+    return;
+  }
   // Compute new order of entries in this week
   const weekEntries=expenses.filter(e=>getWeekMonday(getDisplayDate(e))===srcWk);
   const currentOrder=sortWeekEntries(weekEntries).map(e=>e.id);
@@ -2742,12 +2759,13 @@ function onDrop(ev,targetId){
   renderLog();
   dragSrcId=null;
 }
-// Within-week ordering for By date logged. Priority: (1) explicit manual drag order;
-// (2) tier — executed planning entries, then open/canceled planning entries, then regular
-// expenses (bounties count as planning; a freshly month-reset 🚩 bounty therefore clusters
-// near the top of the 1st-of-month week); (3) tier-appropriate date desc; (4) newest id.
-// Week grouping stays chronological — tiers only reorder cards inside a week, so the ☑️
-// executed planning entries surface at the top of the week they were executed in.
+// Within-week ordering for By date logged. Priority: (1) tier — executed planning entries,
+// then open/canceled planning entries, then regular expenses (bounties count as planning);
+// (2) manual drag order WITHIN a tier; (3) tier-appropriate date desc; (4) newest id.
+// Tier outranks drag on purpose: onDrop pins an entire week's order into manualOrder, so if
+// drag came first, one old drag would permanently stop executed entries from surfacing at the
+// top of their week (the bug this ordering fixes). Drags are correspondingly restricted to
+// same-tier targets. Weeks/months stay chronological — tiers only reorder inside a week.
 function entryTier(e){
   if(!isPlanningInstance(e.instance))return 2;
   return e.status==='executed'?0:1;
@@ -2761,13 +2779,13 @@ function tierDate(e){
 }
 function sortWeekEntries(entries){
   return[...entries].sort((a,b)=>{
+    const ta=entryTier(a),tb=entryTier(b);
+    if(ta!==tb)return ta-tb;
     const ai=manualOrder.indexOf(a.id);
     const bi=manualOrder.indexOf(b.id);
     if(ai!==-1&&bi!==-1)return ai-bi;
     if(ai!==-1)return -1;
     if(bi!==-1)return 1;
-    const ta=entryTier(a),tb=entryTier(b);
-    if(ta!==tb)return ta-tb;
     const da=tierDate(a),db=tierDate(b);
     if(da<db)return 1;
     if(da>db)return -1;
