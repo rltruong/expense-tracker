@@ -53,6 +53,10 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
 .loc-del:hover{background:#fdecec;border-color:#f0b8b8;color:#c0392b}
 .loc-save{color:#1d7a4d;border-color:#bfe0cc}
 .loc-empty{color:#888;font-size:13px;margin:0}
+/* Center the date in the Actual-date-of-execution modal. iOS Safari ignores text-align on
+   date inputs; the internal value box must be targeted via its -webkit pseudo-element. */
+#exec-modal-date{text-align:center}
+#exec-modal-date::-webkit-date-and-time-value{text-align:center}
 /* Discover cashback quarterly table (Reference tab) */
 .disc-table{width:100%;border-collapse:collapse;margin-top:8px}
 .disc-table th{text-align:left;font-weight:600;font-size:13px;color:#555;padding:6px 10px 6px 2px;white-space:nowrap;vertical-align:middle;width:1%}
@@ -750,7 +754,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
         <ul>
           <li><strong>Total spent / Total saved / Full price value:</strong> realized figures. Planned expenses and bounties are <em>excluded until they're executed</em>, so these reflect money actually spent and saved.</li>
           <li><strong>Bounties total:</strong> amount paid across all executed bounty tiers (Bounty, Big bounty, Mega bounty).</li>
-          <li><strong>Pending expenses / Pending savings:</strong> the projected amount and projected savings of planned expenses and bounties that haven't been executed yet. They move into the realized totals once you mark the entry Executed.</li>
+          <li><strong>Pending expenses / Pending savings:</strong> the projected amount and projected savings of planned expenses and bounties that haven't been executed yet. They move into the realized totals once you mark the entry Executed. <strong>Canceled</strong> planning entries count nowhere — not realized (nothing was spent), not pending (nothing is upcoming); they remain in the log as records only.</li>
         </ul>
         <p><strong>Split bills (net spend):</strong> Total spent and the by-instance / by-category breakdowns use <em>net out-of-pocket</em> for split entries. If others reimbursed you ("Others paid me"), the reimbursement is subtracted; if you only covered your share ("I paid others"), your share is used. Total saved and Full price value stay gross, since they track discounts rather than reimbursement.</p>
         <p><strong>By instance:</strong> a pie of realized spend by instance type, with Total spent in the center. Slices sum to Total spent (pending entries aren't included).</p>
@@ -1394,8 +1398,14 @@ function updateIndulgenceOptions(){
 function isPlanningInstance(v){return PLANNING_INSTANCES.includes(v);}
 function fmt(n){const v=parseFloat(n);return isNaN(v)?'—':'$'+v.toFixed(2);}
 function fmtAmount(e){
-  // For planning instances where full===0 and paid===0, show Pending
-  if(isPlanningInstance(e.instance)&&(e.full===0||e.full===null||e.full===undefined)&&(e.paid===0||e.paid===null)){return'<span style="font-size:13px;color:#aaa;font-style:italic">Pending</span>';}
+  // The price cell reflects EXECUTION STATE for planning entries, not data presence:
+  // canceled → "Canceled"; not yet executed → "Pending" (even if a full price was logged —
+  // the projected price still shows in the savings sub-lines and the Summary's Pending boxes);
+  // executed → the real amount paid.
+  if(isPlanningInstance(e.instance)){
+    if(e.status==='canceled'){return'<span style="font-size:13px;color:#aaa;font-style:italic">Canceled</span>';}
+    if(e.status!=='executed'){return'<span style="font-size:13px;color:#aaa;font-style:italic">Pending</span>';}
+  }
   return fmt(e.paid);
 }
 function fmtTime(t){
@@ -3293,9 +3303,12 @@ function netPaid(e){
 }
 function renderSummary(){
   // Pending = a planned expense or bounty that hasn't been executed yet. Excluded from
-  // the realized totals; surfaced separately in the Pending boxes.
-  const isPending=e=>isPlanningInstance(e.instance)&&e.status!=='executed';
-  const counted=expenses.filter(e=>!isPending(e));
+  // the realized totals; surfaced separately in the Pending boxes. Canceled planning
+  // entries count NOWHERE: not realized (nothing was spent) and not pending (nothing is
+  // upcoming) — they exist only as historical records in the log.
+  const isCanceled=e=>isPlanningInstance(e.instance)&&e.status==='canceled';
+  const isPending=e=>isPlanningInstance(e.instance)&&e.status!=='executed'&&!isCanceled(e);
+  const counted=expenses.filter(e=>!isPending(e)&&!isCanceled(e));
   const pending=expenses.filter(isPending);
   const total=counted.reduce((a,e)=>a+netPaid(e),0);
   const totalSaved=counted.reduce((a,e)=>a+(e.saved||0),0);
