@@ -53,10 +53,11 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
 .loc-del:hover{background:#fdecec;border-color:#f0b8b8;color:#c0392b}
 .loc-save{color:#1d7a4d;border-color:#bfe0cc}
 .loc-empty{color:#888;font-size:13px;margin:0}
-/* Center the date in the Actual-date-of-execution modal. iOS Safari ignores text-align on
-   date inputs; the internal value box must be targeted via its -webkit pseudo-element. */
-#exec-modal-date{text-align:center}
-#exec-modal-date::-webkit-date-and-time-value{text-align:center}
+/* Center the Actual-date-of-execution modal's date box with equal whitespace both sides.
+   iOS renders date inputs as inline shrink-to-fit controls that can ignore width:100%, so
+   force block layout + appearance:none, and give the internal value box full width. */
+#exec-modal-date{display:block;width:100%;-webkit-appearance:none;appearance:none;background:#fff;min-height:2.6em;text-align:center}
+#exec-modal-date::-webkit-date-and-time-value{text-align:center;width:100%}
 /* Discover cashback quarterly table (Reference tab) */
 .disc-table{width:100%;border-collapse:collapse;margin-top:8px}
 .disc-table th{text-align:left;font-weight:600;font-size:13px;color:#555;padding:6px 10px 6px 2px;white-space:nowrap;vertical-align:middle;width:1%}
