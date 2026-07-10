@@ -17,6 +17,10 @@ textarea{resize:vertical;min-height:60px}
 input[type=number]::-webkit-inner-spin-button,
 input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 input[type=number]{-moz-appearance:textfield;appearance:textfield}
+/* iOS renders date inputs with native appearance + intrinsic sizing, ignoring width:100% and
+   breaking alignment with sibling fields. appearance:none makes them obey the same box model
+   as every other input (width:100%, border-box, shared padding/border). */
+input[type=date]{-webkit-appearance:none;appearance:none;display:block;width:100%;min-height:38px;background:#fff}
 .toggle-row{display:flex;align-items:center;gap:8px;padding:10px 0}
 .toggle-row label{text-transform:none;font-size:14px;color:#1a1a1a;letter-spacing:0;cursor:pointer;font-weight:400}
 .block{border:1px solid #e0e0e0;border-radius:10px;padding:12px;margin-top:4px;background:#f5f5f2}
@@ -615,7 +619,8 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
       <div class="ref-body">
         <p><strong>Search box:</strong> a global query across each entry's description, location, category, instance and status labels, savings type/details, recipient note, split details, and amounts. Multiple words are AND-matched (all must appear).</p>
         <p><strong>Filters take priority:</strong> the Instance / Category / Status dropdowns decide what's on screen first; the search box only drills down within that subset. So filtering to "Food" and then searching narrows to Food entries that also match the query — search never widens past the filters.</p>
-        <p><strong>Within-week order (By date logged):</strong> weeks stay chronological, but inside each week entries are grouped by priority — ☑️ executed planning entries first (by actual date), then regular expenses (newest first), then ⏳ open and canceled planning entries at the bottom (by planned date). Bounties count as planning entries; since open bounties roll onto the 1st-of-month week, parking them at the bottom keeps them from sitting on top all month. Priority outranks dragging: an entry that becomes executed always surfaces at the top of its week. Drag-and-drop reorders <em>within</em> a priority group (cross-group drags are blocked with a note), and drag order syncs across devices.</p>
+        <p><strong>Within-week order (By date logged):</strong> truly chronological, newest first. Each entry sorts by its logged date, overridden only by the <em>actual execution</em> date for executed planning entries; planned execution dates are ignored. Open bounties are the one placement exception — they roll onto the 1st-of-month week for the monthly check-in. Entries sharing a date show newest-added first. Dragged cards keep their dragged position within the week (drags now sync across devices). The By plan date view keeps its instance/status tiers.</p>
+        <p><strong>View persistence:</strong> whichever sort mode you used last (By date logged or By plan date) is remembered and synced across devices; a brand-new setup opens in By plan date.</p>
         <p><strong>Reset filters</strong> clears the search box and all three dropdowns at once. It leaves the sort mode alone, since sort is a view preference rather than a filter.</p>
         <p><strong>Duplicate (⧉):</strong> opens a pre-filled <em>Add expense</em> draft from any card — copying description, full price, category, and location as a brand-new <strong>Expense</strong>. The instance, status, discount, split, recipient, tags, and dates are all reset (date defaults to today), and nothing is saved until you press Add, so you can tweak first or cancel. Handy for repeat purchases of the same thing.</p>
       </div>
@@ -741,8 +746,9 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
         <p><strong>Inline flag:</strong> <code>/flag</code> expands to 🚩 anywhere in the description (not just as the whole field) to mark an entry as incomplete. See <em>Flagging incomplete entries</em> below.</p>
         <p><strong>Delta calculation in Savings Details</strong> — both directions trigger on a trailing space:</p>
         <ul>
-          <li><strong>Forward</strong> <code>$X.XX /delta</code> + space → <code>$X.XX Δ $Y.YY</code>, where Y.YY = X.XX minus the amount paid (or full price if paid is 0/empty). Reads as "balance went from X to Y." Useful for the remaining gift card / store credit balance after an expense.</li>
-          <li><strong>Backward</strong> <code>/delta $Y.YY</code> + space → <code>$X.XX /delta $Y.YY</code>, where X.XX = Y.YY plus the <em>amount paid</em> (fallback: full price). True inverse of forward: since forward subtracts paid to find the remaining balance, backward adds paid back to recover the original. Only fires when amount paid (or full price) is set.</li>
+          <li><strong>Δ conversion:</strong> typing <code>/delta</code> anywhere in Savings details becomes <strong>Δ</strong> immediately. Both calculations below trigger on the Δ symbol (typed via <code>/delta</code> or pasted directly).</li>
+          <li><strong>Forward</strong> <code>$X.XX Δ</code> + space → <code>$X.XX Δ $Y.YY</code>, where Y.YY = X.XX minus the amount paid (or full price if paid is 0/empty). Reads as "balance went from X to Y." Useful for the remaining gift card / store credit balance after an expense.</li>
+          <li><strong>Backward</strong> <code>Δ $Y.YY</code> + space → <code>$X.XX Δ $Y.YY</code>, where X.XX = Y.YY plus the <em>amount paid</em> (fallback: full price). True inverse of forward: since forward subtracts paid to find the remaining balance, backward adds paid back to recover the original. Only fires when amount paid (or full price) is set.</li>
         </ul>
         <p><strong>Keyword autofill:</strong> typing certain keywords anywhere in the description sets Instance + Category. "gasoline" → Expense + Vehicle. "sonic fiber" → Subscription + Utilities. "fastrak" → Expense + Vehicle.</p>
       </div>
@@ -929,7 +935,7 @@ async function sbLoad() {
     // Old format is migrated transparently on the next saveData() call.
     setSyncState(true);
     if (Array.isArray(raw)) return { entries: raw, locations: [], discover: null, order: null };
-    return { entries: Array.isArray(raw.entries) ? raw.entries : [], locations: Array.isArray(raw.locations) ? raw.locations : [], discover: raw.discover || null, order: Array.isArray(raw.order) ? raw.order : null };
+    return { entries: Array.isArray(raw.entries) ? raw.entries : [], locations: Array.isArray(raw.locations) ? raw.locations : [], discover: raw.discover || null, order: Array.isArray(raw.order) ? raw.order : null, sortMode: (raw.sortMode==='planned'||raw.sortMode==='logged') ? raw.sortMode : null };
   } catch(e) { setSyncState(false); return null; }
 }
 
@@ -937,7 +943,7 @@ async function sbSave(expensesArr) {
   try {
     const { error } = await sbClient
       .from('expenses')
-      .upsert({ id: SB_ROW_ID, data: { entries: expensesArr, locations: knownLocations, discover: discoverCashback, order: manualOrder } });
+      .upsert({ id: SB_ROW_ID, data: { entries: expensesArr, locations: knownLocations, discover: discoverCashback, order: manualOrder, sortMode: sortMode } });
     setSyncState(!error);   // a rejected upsert (RLS / no session) flips the banner on
   } catch(e) { setSyncState(false); }
 }
@@ -1463,46 +1469,49 @@ function onSavingsDetailsInput(){
     }
   });
 
-  // /delta — two directions, each triggered by a trailing space after the pattern.
-  // The space is preserved so the user can keep typing afterward.
+  // Δ (delta) — typing /delta converts to Δ immediately (matching the /flag pattern), and
+  // both calculation directions trigger on Δ. Each fires on a trailing space after the
+  // pattern; the space is preserved so the user can keep typing.
   //
-  //   FORWARD   "$X /delta "  →  "$X Δ $Y "        Y = X − (amount paid, or full price if paid is 0/empty)
-  //                                                 "I had X on the card, spent it down, Y remains."
-  //   BACKWARD  "/delta $Y "  →  "$X /delta $Y "   X = Y + amount paid (fallback: full price)
-  //                                                 True inverse of forward: paid came off the balance,
-  //                                                 so add it back to recover the original X.
+  //   FORWARD   "$X Δ "  →  "$X Δ $Y "        Y = X − (amount paid, or full price if paid is 0/empty)
+  //                                            "I had X on the card, spent it down, Y remains."
+  //   BACKWARD  "Δ $Y "  →  "$X Δ $Y "        X = Y + amount paid (fallback: full price)
+  //                                            True inverse of forward: paid came off the balance,
+  //                                            so add it back to recover the original X.
   //
-  // The two are distinguishable by where the amount sits relative to /delta, and by the
-  // marker they leave behind (forward collapses to Δ; backward keeps /delta literally).
+  // The two are distinguishable by where the amount sits relative to Δ. Re-fire guards: the
+  // backward replacer skips a Δ already preceded by "$N " (its own output), and forward's
+  // (?!\$) lookahead skips a Δ already followed by an amount.
+  if(v.indexOf('/delta')!==-1){v=v.split('/delta').join('Δ');replaced=true;}
   const paidVal=parseFloat(document.getElementById('f-paid').value);
   const fullVal=parseFloat(document.getElementById('f-full').value);
 
-  // BACKWARD first: amount appears AFTER /delta. Addend mirrors forward's subtractor (paid, fallback full).
+  // BACKWARD first: amount appears AFTER Δ. Addend mirrors forward's subtractor (paid, fallback full).
   {
     let addend=null;
     if(!isNaN(paidVal)&&paidVal>0)addend=paidVal;
     else if(!isNaN(fullVal)&&fullVal>0)addend=fullVal;
-    if(addend!==null&&/\/delta\s+\$(\d+(?:\.\d+)?)\s/.test(v)){
+    if(addend!==null&&/Δ\s+\$(\d+(?:\.\d+)?)\s/.test(v)){
       const before=v;
-      v=v.replace(/\/delta\s+\$(\d+(?:\.\d+)?)\s/g,(match,amtStr,offset,whole)=>{
+      v=v.replace(/Δ\s+\$(\d+(?:\.\d+)?)\s/g,(match,amtStr,offset,whole)=>{
         if(/\$\d+(?:\.\d+)?\s$/.test(whole.slice(0,offset)))return match;
         const end=parseFloat(amtStr);
         const start=Math.round((end+addend)*100)/100;
-        return`$${start.toFixed(2)} /delta $${end.toFixed(2)} `;
+        return`$${start.toFixed(2)} Δ $${end.toFixed(2)} `;
       });
       if(v!==before)replaced=true;
     }
   }
 
-  // FORWARD: amount appears BEFORE /delta. The (?!\$) lookahead keeps it from re-firing
-  // on a backward result like "$X /delta $Y " (where /delta is followed by an amount).
-  if(/\$(\d+(?:\.\d+)?)\s+\/delta\s(?!\$)/.test(v)){
+  // FORWARD: amount appears BEFORE Δ. The (?!\$) lookahead keeps it from re-firing
+  // on a backward result like "$X Δ $Y " (where Δ is followed by an amount).
+  if(/\$(\d+(?:\.\d+)?)\s+Δ\s(?!\$)/.test(v)){
     let subtractor=null;
     if(!isNaN(paidVal)&&paidVal>0)subtractor=paidVal;
     else if(!isNaN(fullVal)&&fullVal>0)subtractor=fullVal;
     if(subtractor!==null){
       const before=v;
-      v=v.replace(/\$(\d+(?:\.\d+)?)\s+\/delta\s(?!\$)/g,(match,amtStr)=>{
+      v=v.replace(/\$(\d+(?:\.\d+)?)\s+Δ\s(?!\$)/g,(match,amtStr)=>{
         const amt=parseFloat(amtStr);
         const diff=Math.round((amt-subtractor)*100)/100;
         // Format with leading minus before $ if negative
@@ -1775,12 +1784,14 @@ async function loadData(){
   // Renumber indulgences on load to resolve any other inconsistencies from prior bugs.
   expenses=renumberIndulgences(expenses);
   if(migrated)saveData();
-  // Drag order is synced in the JSONB row. Prefer the synced copy; fall back to this
-  // device's legacy localStorage order (which then migrates into the row on the next save).
+  // Drag order and sort mode are synced in the JSONB row. Prefer the synced copies; fall
+  // back to this device's legacy localStorage values (which then migrate into the row on
+  // the next save).
   loadManualOrder();
   if(Array.isArray(syncedOrder)&&syncedOrder.length){manualOrder=syncedOrder;saveManualOrder();}
-  applyBountyMonthReset();   // new month: clear stale planned dates on open bounties + auto-🚩 (needs manualOrder loaded)
   loadSortMode();
+  if(remote!==null&&remote.sortMode){sortMode=remote.sortMode;saveSortMode();updateSortButtons();}
+  applyBountyMonthReset();   // new month: clear stale planned dates on open bounties + auto-🚩 (needs manualOrder loaded)
   updateSortButtons();
   renderLog();
   updateIndulgenceOptions();
@@ -2551,10 +2562,10 @@ function submitExpense(){
     const updated=readForm(editingId);if(!updated)return;
     const idx=expenses.findIndex(e=>e.id===editingId);
     if(idx>=0){
-      // A tier or week change makes the old drag position meaningless in the new context —
-      // drop it so the entry re-sorts naturally (e.g. freshly executed → top of its week).
+      // A week change makes the old drag position meaningless in the new context —
+      // drop it so the entry re-sorts chronologically (e.g. freshly executed → its actual-date week).
       const prev=expenses[idx];
-      if(entryTier(prev)!==entryTier(updated)||getWeekMonday(getDisplayDate(prev))!==getWeekMonday(getDisplayDate(updated))){
+      if(getWeekMonday(getDisplayDate(prev))!==getWeekMonday(getDisplayDate(updated))){
         manualOrder=manualOrder.filter(id=>id!==editingId);
         saveManualOrder();
       }
@@ -2569,7 +2580,8 @@ function submitExpense(){
 }
 
 function clearForm(){
-  ['f-desc','f-full','f-location','f-paid','f-saved','f-planneddate','f-actualdate','f-recipient','f-splitamount','f-splitwith','f-savingsdetails','f-plannedtime'].forEach(id=>document.getElementById(id).value='');
+  ['f-desc','f-full','f-location','f-paid','f-saved','f-planneddate','f-actualdate','f-recipient','f-splitamount','f-splitwith','f-splitvia','f-savingsdetails','f-plannedtime'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('f-savingstype').selectedIndex=0;   // match a fresh form (first option)
   document.getElementById('f-hastime').checked=false;
   document.getElementById('f-plannedtime').style.display='none';
   document.querySelectorAll('input[name="split-dir"]').forEach(r=>r.checked=false);
@@ -2704,9 +2716,8 @@ function chronoSort(arr){
 
 function setSortMode(mode){
   sortMode=mode;
-  manualOrder=[];
-  saveManualOrder();
   saveSortMode();
+  saveData();   // sortMode syncs across devices via the JSONB row
   updateSortButtons();
   renderLog();
   showToast(mode==='logged'?'Sorted by date logged.':'Sorted by plan date.');
@@ -2755,11 +2766,6 @@ function onDrop(ev,targetId){
     dragSrcId=null;
     return;
   }
-  if(entryTier(src)!==entryTier(tgt)){
-    showToast('Reorder only within the same priority group (executed / regular / open planning).');
-    dragSrcId=null;
-    return;
-  }
   // Compute new order of entries in this week
   const weekEntries=expenses.filter(e=>getWeekMonday(getDisplayDate(e))===srcWk);
   const currentOrder=sortWeekEntries(weekEntries).map(e=>e.id);
@@ -2776,36 +2782,20 @@ function onDrop(ev,targetId){
   renderLog();
   dragSrcId=null;
 }
-// Within-week ordering for By date logged. Priority: (1) tier — ☑️ executed planning entries
-// first, then REGULAR expenses (so the newest logging sits right under the executed group),
-// then ⏳ open/canceled planning entries at the bottom of the week (open bounties roll onto
-// the 1st-of-month week all month, so parking them low keeps them from squatting on top);
-// (2) manual drag order WITHIN a tier; (3) tier-appropriate date desc; (4) newest id.
-// Tier outranks drag on purpose: onDrop pins an entire week's order into manualOrder, so if
-// drag came first, one old drag would permanently stop executed entries from surfacing at the
-// top of their week. Drags are correspondingly restricted to same-tier targets. Weeks/months
-// stay chronological — tiers only reorder inside a week.
-function entryTier(e){
-  if(!isPlanningInstance(e.instance))return 1;
-  return e.status==='executed'?0:2;
-}
-function tierDate(e){
-  if(isPlanningInstance(e.instance)){
-    if(e.status==='executed')return e.actualDate||getDisplayDate(e);
-    return e.plannedDate||getDisplayDate(e);
-  }
-  return getDisplayDate(e);
-}
+// Within-week ordering for By date logged: truly chronological. Sort key is the entry's
+// display date — the logged date, overridden only by the actual EXECUTION date for executed
+// planning entries (and by the 1st-of-month roll-forward for open bounties, which governs
+// their week placement for the monthly check-in workflow). Planned execution dates are
+// ignored entirely. Manual drag order overrides within a week; newest id breaks ties.
+// (The By plan date view keeps its instance/status tiers — this applies to logged mode only.)
 function sortWeekEntries(entries){
   return[...entries].sort((a,b)=>{
-    const ta=entryTier(a),tb=entryTier(b);
-    if(ta!==tb)return ta-tb;
     const ai=manualOrder.indexOf(a.id);
     const bi=manualOrder.indexOf(b.id);
     if(ai!==-1&&bi!==-1)return ai-bi;
     if(ai!==-1)return -1;
     if(bi!==-1)return 1;
-    const da=tierDate(a),db=tierDate(b);
+    const da=getDisplayDate(a),db=getDisplayDate(b);
     if(da<db)return 1;
     if(da>db)return -1;
     return b.id-a.id;
