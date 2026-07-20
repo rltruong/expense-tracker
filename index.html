@@ -2669,7 +2669,10 @@ const DRAFT_TEXT_FIELDS=['f-desc','f-full','f-location','f-recipient','f-splitam
 const DRAFT_CHECK_FIELDS=['f-hastime','f-greenlit','f-hassplit','f-hassavings'];
 let restoringDraft=false,draftTimer=null;
 function draftHasContent(d){
-  return !!(d&&(d['f-desc']||d['f-full']||d['f-location']||d['f-instance']||d['f-category']||(d['f-recipient']&&d['f-recipient']!=='@')||d['f-splitamount']||d['f-savingsdetails']||d['f-planneddate']||d['f-plannedtime']));
+  // Note: f-splitvia and f-savingstype are excluded deliberately — their defaults
+  // ('cash' / first option) are always truthy, so including them would make every
+  // empty form look like a draft.
+  return !!(d&&(d['f-desc']||d['f-full']||d['f-location']||d['f-instance']||d['f-category']||(d['f-recipient']&&d['f-recipient']!=='@')||d['f-splitamount']||d['f-splitwith']||d['f-paid']||d['f-savingsdetails']||d['f-hassplit']||d['f-hassavings']||d['f-planneddate']||d['f-plannedtime']));
 }
 function saveDraft(){
   if(restoringDraft||editingId!==null)return;
@@ -3142,11 +3145,13 @@ function editEntry(id){
 }
 
 // Duplicate an entry as a brand-new Expense draft (pre-filled, not yet saved).
-// Carries only desc, full price, category, and location; instance forced to Expense.
-// Everything else (status, split, recipient, tags, savings/discount, planned/actual
-// dates, journal flag) is intentionally dropped — discounts reset, so paid defaults to
-// full at save. Date is left at today via clearForm(), since a duplicate is a new
-// transaction. editingId is cleared first so this saves as a new row, never an overwrite.
+// Carries desc, full price, category, location, and the Extras section: bill split
+// (direction, amount, via, with) and savings/discount (paid, type, details) — review
+// the discount before saving, since it may not apply to the new transaction.
+// Everything else (status, recipient, tags, planned/actual dates, journal flag) is
+// intentionally dropped. Date is left at today via clearForm(), since a duplicate is
+// a new transaction. editingId is cleared first so this saves as a new row, never an
+// overwrite.
 function duplicateEntry(id){
   const src=expenses.find(x=>x.id===id);if(!src)return;
   editingId=null;                       // ensure NEW entry, not an edit of the source
@@ -3160,6 +3165,25 @@ function duplicateEntry(id){
   document.getElementById('f-location').value=src.location||'';
   document.getElementById('f-date').value=today;
   updateDateDisplay();
+  // Extras: mirror the edit-prefill pattern for split and savings.
+  if(src.split){
+    document.getElementById('f-hassplit').checked=true;toggleSplit();
+    document.querySelectorAll('input[name="split-dir"]').forEach(r=>r.checked=false);
+    const dirEl=document.getElementById('f-splitdir-'+(src.split.direction||'paid'));
+    if(dirEl)dirEl.checked=true;
+    updateSplitLabel();
+    document.getElementById('f-splitamount').value=src.split.amount?parseFloat(src.split.amount).toFixed(2):'';
+    document.getElementById('f-splitwith').value=src.split.with||'';
+    document.getElementById('f-splitvia').value=src.split.via||'cash';
+  }
+  if(src.saved>0){
+    document.getElementById('f-hassavings').checked=true;toggleSavings();
+    document.getElementById('f-paid').value=(Math.round(src.paid*100)/100).toFixed(2);
+    document.getElementById('f-savingstype').value=src.savingstype||'other';
+    document.getElementById('f-savingsdetails').value=src.savingsdetails||'';
+    calcSavings();
+  }
+  if(src.split||src.saved>0)setExtrasExpanded(true);
   saveDraft();                          // persist the prefilled duplicate as a new-entry draft
   showToast('Duplicated as a new expense — review and save.');
   // Pulse + scroll the description into view, mirroring the edit affordance.
